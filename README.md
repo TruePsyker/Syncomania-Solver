@@ -2,7 +2,7 @@
 A solver for syncomania game
 
 ## About
-Syncomania is a puzzle game and this project allow to solve game levels.
+[Syncomania](https://www.facebook.com/syncomania/) is a puzzle game and this project allow to solve game levels.
 
 The solver uses BFS or A-star algorithms to find solutions.
 
@@ -10,6 +10,8 @@ The solver uses BFS or A-star algorithms to find solutions.
 4 Actors controlled by player. Their movement is permanently synchronous.
 
 Level is won when all actors, one after another, step into an 'exit' tile.
+
+Player must avoid moving actors into 'trap' tiles.
 
 ### Level tiles
 There are 'block' tiles on the map where actor can't move in (so the actor just stays where it is).
