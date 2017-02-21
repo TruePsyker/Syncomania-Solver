@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 14
+VisualStudioVersion = 14.0.25420.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncomaniaSolver", "SyncomaniaSolver.csproj", "{551D5140-2CDC-461C-B1AF-CE44661FFD1D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncomaniaSolverTests", "SyncomaniaSolverTests.csproj", "{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{551D5140-2CDC-461C-B1AF-CE44661FFD1D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{551D5140-2CDC-461C-B1AF-CE44661FFD1D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{551D5140-2CDC-461C-B1AF-CE44661FFD1D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{551D5140-2CDC-461C-B1AF-CE44661FFD1D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
