@@ -21,5 +21,5 @@ There are 4 'pusher' types of tiles corresponding to each direction. Pusher push
 An actor can be pushed only once per turn.
 
 ## Input for the solver
-Game level should be rectangle and its area not greater than 256 tiles. Such area constraint allows use non-collision hash 
+Game level should be rectangle and its area not greater than 256 tiles. Such area constraint allows usage of non-collision hash 
 for game states.
