@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using SyncomaniaSolver;
 
@@ -10,27 +11,38 @@ namespace SyncomaniaSolverTests
         [TestMethod]
         public void Add_RemoveMin_IsValid()
         {
-            var pq = new PriorityQueue<int>();
-            pq.Add( 5 );
-            pq.Add( 4 );
-            pq.Add( 3 );
-            pq.Add( 2 );
-            pq.Add( 1 );
+            var pq = new PriorityQueue<int>(32000);
+            var check = new List<int>(32000);
+            var rnd = new Random();
 
-            var value = pq.RemoveMin();
-            Assert.AreEqual( 1, value );
+            int recordsCount = 10000;
 
-            value = pq.RemoveMin();
-            Assert.AreEqual( 2, value );
+            for ( int i = 0; i < recordsCount; i++ )
+            {
+                int rec = rnd.Next();
+                pq.Add( rec );
+                check.Add(rec);
+            }
 
-            value = pq.RemoveMin();
-            Assert.AreEqual( 3, value );
+            check.Sort();
 
-            value = pq.RemoveMin();
-            Assert.AreEqual( 4, value );
+            for ( int i = 0; i < recordsCount; i++ )
+            {
+                Assert.AreEqual( check[i], pq.RemoveMin() );
+            }
+        }
 
-            value = pq.RemoveMin();
-            Assert.AreEqual( 5, value );
+        [TestMethod]
+        public void ExtendCapacity_IsValid()
+        {
+            var pq = new PriorityQueue<int>(2);
+
+            Assert.AreEqual( 2, pq.Capacity );
+
+            pq.Add(1);
+            pq.Add(2);
+
+            Assert.AreEqual( 4, pq.Capacity );
         }
     }
 }

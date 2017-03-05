@@ -42,7 +42,7 @@ namespace SyncomaniaSolver
             }
             set
             {
-                if ( value < _size )
+                if ( value <= _size )
                     throw new ArgumentOutOfRangeException();
 
                 if ( value != _items.Length )
@@ -52,6 +52,8 @@ namespace SyncomaniaSolver
                         T[] newItems = new T[value];
                         if ( _size > 0 )
                             Array.Copy( _items, 1, newItems, 1, _size );
+
+                        _items = newItems;
                     }
                     else
                     {

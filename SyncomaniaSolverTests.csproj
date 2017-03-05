@@ -57,7 +57,7 @@
     <Compile Include="PriorityQueueTests.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\SyncomaniaSolver\SyncomaniaSolver.csproj">
+    <ProjectReference Include="SyncomaniaSolver.csproj">
       <Project>{551d5140-2cdc-461c-b1af-ce44661ffd1d}</Project>
       <Name>SyncomaniaSolver</Name>
     </ProjectReference>

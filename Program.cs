@@ -26,31 +26,12 @@ namespace SyncomaniaSolver
 //                data = sr.ReadToEnd();
 //            }
 //#else
-            var data = test_2;
+            var data = level_8;
 //#endif
 
             Map map = new Map();
             map.LoadMap( data );
 
-
-            //for (x = 0; x < width; x++)
-            //{
-            //    for (y = 0; y < height; y++)
-            //    {
-            //        List<Tile> neighbours = new List<Tile>();
-            //        if (x > 0)
-            //            neighbours.Add(map.tiles[x - 1, y]);
-            //        if (y > 0)
-            //            neighbours.Add(map.tiles[x, y - 1]);
-            //        if (x < width - 1)
-            //            neighbours.Add(map.tiles[x + 1, y]);
-            //        if (y < height - 1)
-            //            neighbours.Add(map.tiles[x, y + 1]);
-            //        map.tiles[x, y].neighbours = neighbours.ToArray();
-            //    }
-            //}
-
-            //BFS
             //var state = map.PathFind_BFS_Queue();
             var state = map.PathFind_AStar();
 
@@ -95,11 +76,21 @@ namespace SyncomaniaSolver
                                                 " # # # ",
                                                 "@# # #@",
                                                 "       " };
-        // Detect and consider symmetry: 
-        // reverse_rows( map_string ) == map_string
-        // and/or reverse_columns( map_string ) == map_string
 
-        // Write tests
+           static string[] level_8 = new string[] { "###     ###",
+                                                    "#     #   #",
+                                                    "##@   # @##",
+                                                    "##    #  ##",
+                                                    "## ##### ##",
+                                                    "     e     ",
+                                                    "## ##### ##",
+                                                    "##  #    ##",
+                                                    "##@ #   @##",
+                                                    "#   #     #",
+                                                    "###     ###" };
+        // Detect and consider diagonal symmetry
+        // AntiActors
+        // Block and AA pushing
     }
 
     [Flags]
@@ -146,7 +137,7 @@ namespace SyncomaniaSolver
 
         public int Hash { get; private set; }
 
-        public State( State prevState, Pos? pos1, Pos? pos2, Pos? pos3, Pos? pos4, int dx, int dy, Map map )
+        public State( State prevState, Pos? pos1, Pos? pos2, Pos? pos3, Pos? pos4, int dx, int dy, int _hash )
         {
             this.prevState = prevState;
             this.pos1 = pos1;
@@ -155,14 +146,14 @@ namespace SyncomaniaSolver
             this.pos4 = pos4;
             this.dx = dx;
             this.dy = dy;
-            Hash = map.CalculateStateHash( ref pos1, ref pos2, ref pos3, ref pos4 );
+            Hash = _hash;
         }
 
         public bool IsFinished() { return pos1.HasValue == false && pos2.HasValue == false && pos3.HasValue == false && pos4.HasValue == false; }
 
         public override string ToString()
         {
-            return string.Format( "dx: {0}   dy: {1}", dx, dy );
+            return string.Format( "dx: {0,2}  dy: {1,2}", dx, dy );
         }
 
         public bool Equals( State other )
@@ -439,7 +430,7 @@ namespace SyncomaniaSolver
             }
         }
 
-        private bool GetNewState( State currentState, int dx, int dy, out State newState )
+        private bool GetNewState( State currentState, int dx, int dy, Func<int,bool> checkHash, out State newState )
         {
             Pos? pos1 = null;
             Pos? pos2 = null;
@@ -477,14 +468,21 @@ namespace SyncomaniaSolver
                  pos3.HasValue && pos4.HasValue && pos3.Value.Equals( pos4.Value ) )
                 return false;
 
-            newState = new State( currentState, pos1, pos2, pos3, pos4, dx, dy, this );
+            var hash = CalculateStateHash( ref pos1, ref pos2, ref pos3, ref pos4 );
+
+            if ( checkHash(hash) == false )
+                return false;
+
+            newState = new State( currentState, pos1, pos2, pos3, pos4, dx, dy, hash );
 
             return true;
         }
 
         public State GetStartingState()
         {
-            return new State( null, actors[0], actors[1], actors[2], actors[3], 0, 0, this );
+            var hash = CalculateStateHash( ref actors[0], ref actors[1], ref actors[2], ref actors[3] );
+
+            return new State( null, actors[0], actors[1], actors[2], actors[3], 0, 0, hash );
         }
 
         private void FindSymmetry()
@@ -552,19 +550,21 @@ namespace SyncomaniaSolver
 
             State currentState = null;
 
+            Func<int, bool> checkHash = (hash) =>
+            {
+                return allUniqueStates.Contains( hash ) == false;
+            };
+
             Func<State, int, int, bool> f = (state, dx, dy) =>
             {
                 State newState;
-                if ( GetNewState( state, dx, dy, out newState ) )
+                if ( GetNewState( state, dx, dy, checkHash, out newState ) )
                 {
                     if ( newState.IsFinished() )
                     {
                         currentState = newState;
                         return true;
                     }
-
-                    if ( allUniqueStates.Contains( newState.Hash ) )
-                        return false;
 
                     allUniqueStates.Add( newState.Hash );
                     if ( ( Symmetry & eSymmetry.Horizontal ) == eSymmetry.Horizontal )
@@ -629,10 +629,15 @@ namespace SyncomaniaSolver
 
             PriorityQueue<SolutionState> solutions = new PriorityQueue<SolutionState>(100);
 
+            Func<int, bool> checkHash = (hash) =>
+            {
+                return allUniqueStates.Contains( hash ) == false;
+            };
+
             Func<State, int, int, bool> f = ( state, dx, dy ) =>
             {
                 State newState;
-                if ( GetNewState( state, dx, dy, out newState ) )
+                if ( GetNewState( state, dx, dy, checkHash, out newState ) )
                 {
                     if ( newState.IsFinished() )
                     {
@@ -640,16 +645,13 @@ namespace SyncomaniaSolver
                         return solutions.Count == 1;
                     }
 
-                    if ( allUniqueStates.Contains( newState.Hash ) )
-                        return false;
-
-                    allUniqueStates.Add( newState.Hash );
-                    if ( ( Symmetry & eSymmetry.Horizontal ) == eSymmetry.Horizontal )
-                        allUniqueStates.Add( GetHashForSymmetricState( newState, 1, 0 ) );
-                    if ( ( Symmetry & eSymmetry.Vertical ) == eSymmetry.Vertical )
-                        allUniqueStates.Add( GetHashForSymmetricState( newState, 0, 1 ) );
-                    if ( ( Symmetry & eSymmetry.Both ) == eSymmetry.Both )
-                        allUniqueStates.Add( GetHashForSymmetricState( newState, 1, 1 ) );
+                    allUniqueStates.Add(newState.Hash);
+                    if ((Symmetry & eSymmetry.Horizontal) == eSymmetry.Horizontal)
+                        allUniqueStates.Add(GetHashForSymmetricState(newState, 1, 0));
+                    if ((Symmetry & eSymmetry.Vertical) == eSymmetry.Vertical)
+                        allUniqueStates.Add(GetHashForSymmetricState(newState, 0, 1));
+                    if ((Symmetry & eSymmetry.Both) == eSymmetry.Both)
+                        allUniqueStates.Add(GetHashForSymmetricState(newState, 1, 1));
 
                     newState.CalculateWeight( ExitPos );
 
