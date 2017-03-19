@@ -1,11 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 14
-VisualStudioVersion = 14.0.25420.1
+VisualStudioVersion = 14.0.24720.0
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncomaniaSolver", "SyncomaniaSolver.csproj", "{551D5140-2CDC-461C-B1AF-CE44661FFD1D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SyncomaniaSolverTests", "SyncomaniaSolverTests.csproj", "{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WebService", "Web\Service\WebService.csproj", "{126F3580-BB1D-44B7-B80F-F7BB8A1C464E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +23,10 @@ Global
 		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1ADBF54-8BD6-4523-BAFD-525CAB26BBB1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{126F3580-BB1D-44B7-B80F-F7BB8A1C464E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{126F3580-BB1D-44B7-B80F-F7BB8A1C464E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{126F3580-BB1D-44B7-B80F-F7BB8A1C464E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{126F3580-BB1D-44B7-B80F-F7BB8A1C464E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
