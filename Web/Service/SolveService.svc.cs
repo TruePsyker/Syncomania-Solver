@@ -13,21 +13,37 @@ namespace Service
     {
         public string Solve( string input )
         {
-            string[] map;
-            if ( TryParseInput( input, out map ) == false )
-                return string.Empty;
-
             var gm = new SyncomaniaSolver.GameMap();
 
-            gm.LoadMap( map );
-            var gs = gm.Solve_AStar();
-            return "";
+            try {
+                if ( gm.LoadMap( input ) == false )
+                    return string.Empty;
+
+                var gs = gm.Solve_AStar();
+
+                return HistoryDumper( gs );
+            } catch { }
+                
+            return "An error has occured";
         }
 
-        private bool TryParseInput( string input, out string[] map )
+        static string HistoryDumper( SyncomaniaSolver.GameState stateAtFinish )
         {
-            map = new string[0];
-            return false;
+            if ( stateAtFinish.IsFinished() )
+            {
+                StringBuilder strSolution = new StringBuilder();
+                strSolution.AppendLine( String.Format( "Solution turns count: {0}", stateAtFinish.turn ) );
+
+                foreach ( var state in stateAtFinish.History )
+                {
+                    strSolution.AppendLine( state.ToString() );
+                }
+                return strSolution.ToString();
+            }
+            else
+            {
+                return "No solution found.";
+            }
         }
     }
 }

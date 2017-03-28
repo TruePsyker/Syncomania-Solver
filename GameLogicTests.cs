@@ -10,26 +10,30 @@ namespace SyncomaniaSolverTests
         [TestMethod]
         public void Map_LoadMapIsValid()
         {
+            GameMap.TestIsOn = true;
+
             var map = new GameMap();
             var data = new string[] { "ex #<>^_@" };
             map.LoadMap( data );
 
-            Assert.AreEqual( MapTile.TileType.Exit, map.tiles[0, 0].type );
-            Assert.AreEqual( MapTile.TileType.Trap, map.tiles[1, 0].type );
-            Assert.AreEqual( MapTile.TileType.Empty, map.tiles[2, 0].type );
-            Assert.AreEqual( MapTile.TileType.Block, map.tiles[3, 0].type );
-            Assert.AreEqual( MapTile.TileType.PusherLeft, map.tiles[4, 0].type );
-            Assert.AreEqual( MapTile.TileType.PusherRight, map.tiles[5, 0].type );
-            Assert.AreEqual( MapTile.TileType.PusherUp, map.tiles[6, 0].type );
-            Assert.AreEqual( MapTile.TileType.PusherDown, map.tiles[7, 0].type );
-            Assert.AreEqual( MapTile.TileType.Empty, map.tiles[8, 0].type );
+            Assert.AreEqual( MapTile.TileType.Exit, map[0, 0].type );
+            Assert.AreEqual( MapTile.TileType.Trap, map[1, 0].type );
+            Assert.AreEqual( MapTile.TileType.Empty, map[2, 0].type );
+            Assert.AreEqual( MapTile.TileType.Block, map[3, 0].type );
+            Assert.AreEqual( MapTile.TileType.PusherLeft, map[4, 0].type );
+            Assert.AreEqual( MapTile.TileType.PusherRight, map[5, 0].type );
+            Assert.AreEqual( MapTile.TileType.PusherUp, map[6, 0].type );
+            Assert.AreEqual( MapTile.TileType.PusherDown, map[7, 0].type );
+            Assert.AreEqual( MapTile.TileType.Empty, map[8, 0].type );
 
-            Assert.AreEqual( new Pos { x = 8, y = 0 }, map.actors[0] );
+            Assert.AreEqual( map[8, 0], map.actors[0] );
         }
 
         [TestMethod]
         public void Map_FindSymmetryIsValid()
         {
+            GameMap.TestIsOn = true;
+
             var map = new GameMap();
             var data = new string[] { "# # #",
                                       "  #  " };
@@ -94,129 +98,146 @@ namespace SyncomaniaSolverTests
         [TestMethod]
         public void Map_GetNewPos_BoundChecking_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
             var data = new string[] { "  ",
                                       "  " };
             map.LoadMap( data );
-            Pos? pos;
+            MapTile pos, newpos;
+            bool bValidPos;
 
-            bool bValidPos = map.GetNewPos( new Pos { x = 0, y = 0 }, -1, 0, out pos );
+            pos = map[0, 0];
+            bValidPos = map.GetNewPos( pos, Direction.Left, out newpos );
             Assert.IsTrue( bValidPos );
+            Assert.AreEqual( pos, newpos );
 
-            bValidPos = map.GetNewPos( new Pos { x = 1, y = 0 }, 1, 0, out pos );
+            pos = map[1, 0];
+            bValidPos = map.GetNewPos( pos, Direction.Right, out newpos );
             Assert.IsTrue( bValidPos );
+            Assert.AreEqual( pos, newpos );
 
-            bValidPos = map.GetNewPos( new Pos { x = 0, y = 0 }, 0, -1, out pos );
+            pos = map[1, 0];
+            bValidPos = map.GetNewPos( pos, Direction.Up, out newpos );
             Assert.IsTrue( bValidPos );
+            Assert.AreEqual( pos, newpos );
 
-            bValidPos = map.GetNewPos( new Pos { x = 0, y = 1 }, 0, 1, out pos );
+            pos = map[1, 1];
+            bValidPos = map.GetNewPos( pos, Direction.Down, out newpos );
             Assert.IsTrue( bValidPos );
+            Assert.AreEqual( pos, newpos );
         }
 
         [TestMethod]
         public void Map_GetNewPos_Empty_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
             var data = new string[] { "  ",
                                       "  " };
             map.LoadMap( data );
-            Pos? pos;
+            MapTile pos, newpos;
 
-            bool bValidPos = map.GetNewPos( new Pos { x = 0, y = 0 }, 0, 1, out pos );
+            pos = map[0, 0];
+            bool bValidPos = map.GetNewPos( pos, Direction.Down, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 0, y = 1 }, pos );
+            Assert.AreEqual( map[0, 1], newpos );
         }
 
         [TestMethod]
         public void Map_GetNewPos_Block_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
             var data = new string[] { "  ",
                                       " #" };
             map.LoadMap( data );
-            Pos? pos;
+            MapTile pos, newpos;
 
-            var origPos = new Pos { x = 0, y = 1 };
-            bool bValidPos = map.GetNewPos( origPos, 1, 0, out pos );
+            pos = map[0, 1];
+            bool bValidPos = map.GetNewPos( pos, Direction.Right, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( origPos, pos );
+            Assert.AreEqual( newpos, pos );
         }
 
         [TestMethod]
         public void Map_GetNewPos_Exit_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
             var data = new string[] { " e",
                                       "  " };
             map.LoadMap( data );
-            Pos? pos;
+            MapTile pos, newpos;
 
-            var origPos = new Pos { x = 0, y = 0 };
-            bool bValidPos = map.GetNewPos( origPos, 1, 0, out pos );
+            pos = map[0, 0];
+            bool bValidPos = map.GetNewPos( pos, Direction.Right, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( null, pos );
+            Assert.IsNull( newpos );
         }
 
         [TestMethod]
         public void Map_GetNewPos_Trap_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
             var data = new string[] { "x ",
                                       "  " };
             map.LoadMap( data );
-            Pos? pos;
+            MapTile pos, newpos;
 
-            var origPos = new Pos { x = 0, y = 1 };
-            bool bValidPos = map.GetNewPos( origPos, 0, -1, out pos );
+            pos = map[0, 1];
+            bool bValidPos = map.GetNewPos( pos, Direction.Up, out newpos );
             Assert.IsFalse( bValidPos );
         }
 
         [TestMethod]
         public void Map_GetNewPos_Pushers_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
             var data1 = new string[] { " > ^",
                                        "^ _<",
                                        " <  " };
             map.LoadMap( data1 );
-            Pos? pos;
+            MapTile pos, newpos;
 
-            var origPos = new Pos { x = 0, y = 0 };
-            bool bValidPos = map.GetNewPos( origPos, 1, 0, out pos );
+            pos = map[0, 0];
+            bool bValidPos = map.GetNewPos( pos, Direction.Right, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 2, y = 0 }, pos );
+            Assert.AreEqual( map[2, 0], newpos );
 
-            origPos = new Pos { x = 2, y = 0 };
-            bValidPos = map.GetNewPos( origPos, 0, 1, out pos );
+            pos = map[2, 0];
+            bValidPos = map.GetNewPos( pos, Direction.Down, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 2, y = 2 }, pos );
+            Assert.AreEqual( map[2, 2], newpos );
 
-            origPos = new Pos { x = 2, y = 2 };
-            bValidPos = map.GetNewPos( origPos, -1, 0, out pos );
+            pos = map[2, 2];
+            bValidPos = map.GetNewPos( pos, Direction.Left, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 0, y = 2 }, pos );
+            Assert.AreEqual( map[0, 2], newpos );
 
-            origPos = new Pos { x = 0, y = 2 };
-            bValidPos = map.GetNewPos( origPos, 0, -1, out pos );
+            pos = map[0, 2];
+            bValidPos = map.GetNewPos( pos, Direction.Up, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 0, y = 0 }, pos );
+            Assert.AreEqual( map[0, 0], newpos );
 
             // Pusher looks into wall. Should stay at pusher position.
-            origPos = new Pos { x = 2, y = 0 };
-            bValidPos = map.GetNewPos( origPos, 1, 0, out pos );
+            pos = map[2, 0];
+            bValidPos = map.GetNewPos( pos, Direction.Right, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 3, y = 0 }, pos );
+            Assert.AreEqual( map[3, 0], newpos );
 
             // Pusher looks into another pusher. Should stay at latter.
-            origPos = new Pos { x = 3, y = 2 };
-            bValidPos = map.GetNewPos( origPos, 0, -1, out pos );
+            pos = map[3, 2];
+            bValidPos = map.GetNewPos( pos, Direction.Up, out newpos );
             Assert.IsTrue( bValidPos );
-            Assert.AreEqual( new Pos { x = 2, y = 1 }, pos );
+            Assert.AreEqual( map[2, 1], newpos );
         }
 
         [TestMethod]
         public void Map_CalculateDistanceToExit_IsValid()
         {
+            GameMap.TestIsOn = true;
             var map = new GameMap();
 
             var data = new string[] { "   #",
@@ -226,11 +247,11 @@ namespace SyncomaniaSolverTests
 
             map.LoadMap( data );
 
-            Assert.AreEqual( 0, map.tiles[0, 1].distanceToExit );
-            Assert.AreEqual( 1, map.tiles[0, 0].distanceToExit );
-            Assert.AreEqual( 5, map.tiles[3, 3].distanceToExit );
-            Assert.AreEqual( int.MaxValue, map.tiles[1, 1].distanceToExit );
-            Assert.AreEqual( int.MaxValue, map.tiles[3, 1].distanceToExit );
+            Assert.AreEqual( 0, map[0, 1].distanceToExit );
+            Assert.AreEqual( 1, map[0, 0].distanceToExit );
+            Assert.AreEqual( 5, map[3, 3].distanceToExit );
+            Assert.AreEqual( int.MaxValue, map[1, 1].distanceToExit );
+            Assert.AreEqual( int.MaxValue, map[3, 1].distanceToExit );
         }
     }
 }

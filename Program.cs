@@ -30,31 +30,23 @@ namespace SyncomaniaSolver
             GameMap map = new GameMap();
             map.LoadMap( data );
 
-            //var state = map.PathFind_BFS_Queue();
+            //var state = map.Solve_BFS();
             var state = map.Solve_AStar();
 
-            DumpPath( state );
-            // state.DumpHistory( dumper )
+            DumpHistory( state );
 
             Console.ReadKey();
         }
 
-        static void DumpPath( GameState stateAtFinish )
+        static void DumpHistory( GameState stateAtFinish )
         {
             if ( stateAtFinish.IsFinished() )
             {
-                List<GameState> ordered = new List<GameState>();
-                while ( stateAtFinish.PrevState != null )
+                Console.WriteLine( "Solution turns count: {0}", stateAtFinish.turn );
+                foreach ( var state in stateAtFinish.History )
                 {
-                    ordered.Add( stateAtFinish );
-                    stateAtFinish = stateAtFinish.PrevState;
+                    Console.WriteLine( state.ToString() );
                 }
-
-                for ( var idx = ordered.Count - 1; idx >= 0; idx-- )
-                {
-                    Console.WriteLine( ordered[idx].ToString() );
-                }
-                Console.WriteLine( "Solution turns count: {0}", ordered.Count );
             }
             else
             {
@@ -87,6 +79,7 @@ namespace SyncomaniaSolver
                                                  "##@ #   @##",
                                                  "#   #     #",
                                                  "###     ###" };
+        // TODO:
         // Detect and consider diagonal symmetry
         // AntiActors
         // Block and AA pushing

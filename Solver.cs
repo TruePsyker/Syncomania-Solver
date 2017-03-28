@@ -7,6 +7,14 @@ using System.Diagnostics;
 
 namespace SyncomaniaSolver
 {
+    public enum Direction
+    {
+        Left = 0,
+        Up,
+        Right,
+        Down
+    }
+
     public class MapTile
     {
         public enum TileType
@@ -21,49 +29,53 @@ namespace SyncomaniaSolver
             PusherRight,
         }
 
+        public MapTile( TileType type, int x, int y, int index )
+        {
+            this.type = type;
+            position = new Pos{ x = x, y = y };
+            Index = index;
+        }
         public TileType type;
-
         public int distanceToExit = int.MaxValue;
-
-        //public Tile[] neighbours;
+        public Pos position;
+        public MapTile[] neighbours = new MapTile[4];
+        public int Index { get; private set; }
     }
 
     public class GameState : IComparable<GameState>
     {
         public GameState PrevState { get; private set; }
-        public Pos? pos1;
-        public Pos? pos2;
-        public Pos? pos3;
-        public Pos? pos4;
+        public MapTile pos1;
+        public MapTile pos2;
+        public MapTile pos3;
+        public MapTile pos4;
 
-        public int dx;
-        public int dy;
+        public Direction moveDir;
 
         public float weight;
         public int turn;
 
         public int Hash { get; private set; }
 
-        public GameState( GameState prevState, Pos? pos1, Pos? pos2, Pos? pos3, Pos? pos4, int dx, int dy, int _hash )
+        public GameState( GameState prevState, MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4, Direction moveDir, int _hash )
         {
             this.PrevState = prevState;
             this.pos1 = pos1;
             this.pos2 = pos2;
             this.pos3 = pos3;
             this.pos4 = pos4;
-            this.dx = dx;
-            this.dy = dy;
+            this.moveDir = moveDir;
             Hash = _hash;
 
             if ( prevState != null )
                 turn = prevState.turn + 1;
         }
 
-        public bool IsFinished() { return pos1.HasValue == false && pos2.HasValue == false && pos3.HasValue == false && pos4.HasValue == false; }
+        public bool IsFinished() { return pos1 == null && pos2 == null && pos3 == null && pos4 == null; }
 
         public override string ToString()
         {
-            return string.Format( "dx: {0,2}  dy: {1,2}", dx, dy );
+            return string.Format( "mode dir: {0}", moveDir.ToString() );
         }
 
         public bool Equals( GameState other )
@@ -85,25 +97,25 @@ namespace SyncomaniaSolver
         {
             int dist = 0;
 
-            if ( pos1.HasValue )
+            if ( pos1 != null )
             {
                 //dist = Math.Max( dist, map[pos1.Value].distanceToExit );
-                dist += map[pos1.Value].distanceToExit;
+                dist += pos1.distanceToExit;
             }
-            if ( pos2.HasValue )
+            if ( pos2 != null )
             {
                 //dist = Math.Max( dist, map[pos2.Value].distanceToExit );
-                dist += map[pos2.Value].distanceToExit;
+                dist += pos2.distanceToExit;
             }
-            if ( pos3.HasValue )
+            if ( pos3 != null )
             {
                 //dist = Math.Max( dist, map[pos3.Value].distanceToExit );
-                dist += map[pos3.Value].distanceToExit;
+                dist += pos3.distanceToExit;
             }
-            if ( pos4.HasValue )
+            if ( pos4 != null )
             { 
                 //dist = Math.Max( dist, map[pos4.Value].distanceToExit );
-                dist += map[pos4.Value].distanceToExit;
+                dist += pos4.distanceToExit;
             }
 
             weight += dist;
@@ -111,22 +123,21 @@ namespace SyncomaniaSolver
             weight += 1.58f * turn;
         }
 
-        public void DumpHistory( Action<GameState> dumper )
-        {
-            if ( IsFinished() == false )
-                return;
+        public IEnumerable<GameState> History
+        { 
+            get
+            {
+                List<GameState> ordered = new List<GameState>();
+                GameState state = this;
+                while ( state.PrevState != null ) {
+                    ordered.Add( state );
+                    state = state.PrevState;
+                }
 
-            List<GameState> ordered = new List<GameState>();
-            GameState state = this;
-            while ( state.PrevState != null )
-            {
-                ordered.Add( state );
-                state = state.PrevState;
-            }
-            
-            for ( var idx = ordered.Count - 1; idx >= 0; idx-- )
-            {
-                dumper( ordered[idx] );
+                for ( var idx = ordered.Count - 1; idx >= 0; idx-- )
+                {
+                    yield return ordered[idx];
+                }
             }
         }
     }
@@ -153,6 +164,11 @@ namespace SyncomaniaSolver
         public int x;
         public int y;
 
+        public Pos(int x, int y) {
+            this.x = x;
+            this.y = y;
+        }
+
         public bool Equals( Pos other )
         {
             return x == other.x && y == other.y;
@@ -175,104 +191,156 @@ namespace SyncomaniaSolver
             Both = Horizontal | Vertical,
         }
 
-        public MapTile[,] tiles; // x,y indexing
+        public static bool TestIsOn { get; set; }
+
         public int width;
         public int height;
         public eMapSymmetry Symmetry { get; private set; }
 
-        public readonly Pos?[] actors = { null, null, null, null };
-        public readonly Pos?[] antiActors = { null, null, null, null };
+        public readonly MapTile[] actors = { null, null, null, null };
+        public readonly MapTile[] antiActors = { null, null, null, null };
 
-        public Pos ExitPos { get; private set; }
+        public MapTile ExitTile { get; private set; }
 
-        public MapTile this[Pos pos]
+        public MapTile this[int x, int y]
         {
-            get { return tiles[pos.x, pos.y]; }
+            get { return tiles[x, y]; }
+        }
+
+        private MapTile[,] tiles; // x,y indexing
+
+        private bool LoadMapImpl( int width, int height, IEnumerable<char> mapEnumerable )
+        {
+            this.width = width;
+            this.height = height;
+
+            tiles = new MapTile[width, height];
+
+            ExitTile = null;
+
+            int actorsCount = 0;
+            int antiActorsCount = 0;
+
+            int x = 0, y = 0;
+            int index = 0;
+
+            foreach ( var t in mapEnumerable )
+            {
+                x = index % width;
+                y = index / width;
+                index++;
+
+                MapTile.TileType tileType;
+
+                if ( t == 'e' )
+                    tileType = MapTile.TileType.Exit;
+                else if ( t == 'x' || t == 't' )
+                    tileType = MapTile.TileType.Trap;
+                else if ( t == '#' || t == 'b' )
+                    tileType = MapTile.TileType.Block;
+                else if ( t == '<' || t == 'l' )
+                    tileType = MapTile.TileType.PusherLeft;
+                else if ( t == '>' || t == 'r' )
+                    tileType = MapTile.TileType.PusherRight;
+                else if ( t == '^' || t == 'u' )
+                    tileType = MapTile.TileType.PusherUp;
+                else if ( t == '_' || t == 'd' )
+                    tileType = MapTile.TileType.PusherDown;
+                else if ( t == '@' || t == 'a' || t == 'o' || t == ' ' || t == '.' ) // TODO: don't like it
+                    tileType = MapTile.TileType.Empty;
+                else {
+                    Console.WriteLine( "Unknown map tile" );
+                    return false;
+                }
+
+                var tile = new MapTile( tileType, x, y, index );
+                tiles[x, y] = tile;
+
+                if ( tileType == MapTile.TileType.Exit )
+                {
+                    if ( ExitTile != null )
+                    {
+                        Console.WriteLine( "Map exit already defined" );
+                        return false;
+                    }
+                    ExitTile = tile;
+                }
+                else if ( t == '@' || t == 'a' )
+                    actors[actorsCount++] = tile;
+                else if ( t == 'o' )
+                    antiActors[antiActorsCount++] = tile;
+            }
+
+            if ( index != width * height ) {
+                Console.WriteLine( "Invalid map data" );
+                return false;
+            }
+
+            if ( TestIsOn == false && actorsCount == 0 ) {
+                Console.WriteLine( "No actors on map" );
+                return false;
+            }
+
+            if ( TestIsOn == false && ExitTile == null ) {
+                Console.WriteLine( "No exit on map" );
+                return false;
+            }
+
+            SetupTileNeighbourhood();
+
+            Symmetry = eMapSymmetry.None;
+
+            FindSymmetry();
+
+            var res = CalculateDistanceToExit();
+
+            return res;
+        }
+
+        public bool LoadMap( string map )
+        {
+            if ( String.IsNullOrEmpty( map ) ) {
+                Console.WriteLine( "Map data is null or empty" );
+                return false;
+            }
+
+            return LoadMapImpl( 11, 11, map );
         }
 
         /// <summary>
         /// Only single exit is supported
         /// </summary>
         /// <param name="map"></param>
-        public void LoadMap( string[] map )
+        public bool LoadMap( string[] map )
         {
-            if ( map == null )
-                throw new ArgumentNullException( "map" );
-
-            if ( map.Length == 0 || map[0].Length == 0 )
-                throw new ArgumentException( "Array should not be empty" );
-
-            height = map.Length;
-            width = map[0].Length;
-
-            tiles = new MapTile[width, height];
-
-            int actorsCount = 0;
-            int antiActorsCount = 0;
-
-            int y = 0;
-
-            foreach ( var row in map )
-            {
-                int x = 0;
-                foreach ( var t in row )
-                {
-                    var tile = new MapTile();
-                    tiles[x, y] = tile;
-
-                    tile.type = MapTile.TileType.Empty;
-
-                    if ( t == 'e' )
-                    {
-                        tile.type = MapTile.TileType.Exit;
-                        ExitPos = new Pos { x = x, y = y };
-                    }
-                    else if ( t == 'x' )
-                        tile.type = MapTile.TileType.Trap;
-                    else if ( t == '#' )
-                        tile.type = MapTile.TileType.Block;
-                    else if ( t == '<' )
-                        tile.type = MapTile.TileType.PusherLeft;
-                    else if ( t == '>' )
-                        tile.type = MapTile.TileType.PusherRight;
-                    else if ( t == '^' )
-                        tile.type = MapTile.TileType.PusherUp;
-                    else if ( t == '_' )
-                        tile.type = MapTile.TileType.PusherDown;
-                    else if ( t == '@' )
-                        actors[actorsCount++] = new Pos { x = x, y = y };
-                    else if ( t == 'o' )
-                        antiActors[antiActorsCount++] = new Pos { x = x, y = y };
-                    else if ( t != ' ' )
-                        throw new Exception( "Unknown map tile" );
-
-                    x++;
-                }
-                y++;
+            if ( map == null || map.Length == 0 || map[0].Length == 0 ) {
+                Console.WriteLine( "Map data is null or empty" );
+                return false;
             }
 
-            Symmetry = eMapSymmetry.None;
+            var q = from row in map
+                     from item in row
+                     select item;
 
-            FindSymmetry();
-
-            CalculateDistanceToExit();
+            return LoadMapImpl( map[0].Length, map.Length, q );
         }
 
         /// <summary>
         /// false means not a valid new pos (getting into trap)
         /// </summary>
-        public bool GetNewPos( Pos pos, int dx, int dy, out Pos? result )
+        public bool GetNewPos( MapTile pos, Direction dir, out MapTile result )
         {
-            var x = pos.x + dx;
-            var y = pos.y + dy;
-
             bool bCheckPusher = true;
             while ( true )
             {
-                x = Math.Max( Math.Min( x, width - 1 ), 0 );
-                y = Math.Max( Math.Min( y, height - 1 ), 0 );
+                var neightbourTile = pos.neighbours[(int)dir];
+                if ( neightbourTile == null )
+                {
+                    result = pos;
+                    return true;
+                }
 
-                var tiletype = tiles[x, y].type;
+                var tiletype = neightbourTile.type;
                 if ( tiletype == MapTile.TileType.Trap )
                 {
                     result = null;
@@ -290,15 +358,12 @@ namespace SyncomaniaSolver
                 }
                 else if ( tiletype == MapTile.TileType.Empty )
                 {
-                    pos.x = x;
-                    pos.y = y;
-                    result = pos;
+                    result = neightbourTile;
                     return true;
                 }
                 else if ( tiletype >= MapTile.TileType.PusherUp && tiletype <= MapTile.TileType.PusherRight )
                 {
-                    pos.x = x;
-                    pos.y = y;
+                    pos = neightbourTile;
 
                     if ( !bCheckPusher )
                     {
@@ -307,13 +372,13 @@ namespace SyncomaniaSolver
                     }
 
                     if ( tiletype == MapTile.TileType.PusherDown )
-                        y++;
+                        dir = Direction.Down;
                     else if ( tiletype == MapTile.TileType.PusherUp )
-                        y--;
+                        dir = Direction.Up;
                     else if ( tiletype == MapTile.TileType.PusherLeft )
-                        x--;
+                        dir = Direction.Left;
                     else if ( tiletype == MapTile.TileType.PusherRight )
-                        x++;
+                        dir = Direction.Right;
 
                     bCheckPusher = false;
 
@@ -326,59 +391,70 @@ namespace SyncomaniaSolver
             }
         }
 
-        private bool GetNewState( GameState currentState, int dx, int dy, Func<int,bool> checkHash, out GameState newState )
+        private GameState GetNewState( GameState currentState, Direction dir, Func<int,bool> checkHash )
         {
-            Pos? pos1 = null;
-            Pos? pos2 = null;
-            Pos? pos3 = null;
-            Pos? pos4 = null;
+            MapTile pos1 = null;
+            MapTile pos2 = null;
+            MapTile pos3 = null;
+            MapTile pos4 = null;
 
-            newState = null;
-
-            if ( currentState.pos1.HasValue )
+            if ( currentState.pos1 != null )
             {
-                if ( GetNewPos( currentState.pos1.Value, dx, dy, out pos1 ) == false )
-                    return false;
+                if ( GetNewPos( currentState.pos1, dir, out pos1 ) == false )
+                    return null;
             }
-            if ( currentState.pos2.HasValue )
+            if ( currentState.pos2 != null )
             {
-                if ( GetNewPos( currentState.pos2.Value, dx, dy, out pos2 ) == false )
-                    return false;
+                if ( GetNewPos( currentState.pos2, dir, out pos2 ) == false )
+                    return null;
             }
-            if ( currentState.pos3.HasValue )
+            if ( currentState.pos3 != null )
             {
-                if ( GetNewPos( currentState.pos3.Value, dx, dy, out pos3 ) == false )
-                    return false;
+                if ( GetNewPos( currentState.pos3, dir, out pos3 ) == false )
+                    return null;
             }
-            if ( currentState.pos4.HasValue )
+            if ( currentState.pos4 != null )
             {
-                if ( GetNewPos( currentState.pos4.Value, dx, dy, out pos4 ) == false )
-                    return false;
+                if ( GetNewPos( currentState.pos4, dir, out pos4 ) == false )
+                    return null;
             }
 
-            if ( pos1.HasValue && pos2.HasValue && pos1.Value.Equals( pos2.Value ) || 
-                 pos1.HasValue && pos3.HasValue && pos1.Value.Equals( pos3.Value ) || 
-                 pos1.HasValue && pos4.HasValue && pos1.Value.Equals( pos4.Value ) || 
-                 pos2.HasValue && pos3.HasValue && pos2.Value.Equals( pos3.Value ) || 
-                 pos2.HasValue && pos4.HasValue && pos2.Value.Equals( pos4.Value ) || 
-                 pos3.HasValue && pos4.HasValue && pos3.Value.Equals( pos4.Value ) )
-                return false;
+            if ( pos1 != null && ( pos1 == pos2 || pos1 == pos3 || pos1 == pos4 ) ||
+                 pos2 != null && ( pos2 == pos3 || pos2 == pos4) ||
+                 pos3 != null && pos3 == pos4 )
+                return null;
 
-            var hash = CalculateStateHash( ref pos1, ref pos2, ref pos3, ref pos4 );
+            var hash = CalculateStateHash( pos1, pos2, pos3, pos4 );
 
             if ( checkHash(hash) == false )
-                return false;
+                return null;
 
-            newState = new GameState( currentState, pos1, pos2, pos3, pos4, dx, dy, hash );
-
-            return true;
+            return new GameState( currentState, pos1, pos2, pos3, pos4, dir, hash );
         }
 
         public GameState GetStartingState()
         {
-            var hash = CalculateStateHash( ref actors[0], ref actors[1], ref actors[2], ref actors[3] );
+            var hash = CalculateStateHash( actors[0], actors[1], actors[2], actors[3] );
 
-            return new GameState( null, actors[0], actors[1], actors[2], actors[3], 0, 0, hash );
+            return new GameState( null, actors[0], actors[1], actors[2], actors[3], Direction.Left, hash );
+        }
+
+        private void SetupTileNeighbourhood()
+        {
+            for ( int row = 0; row < height; row++ )
+            {
+                for ( int col = 0; col < width; col++ )
+                {
+                    if ( col > 0 )
+                        tiles[col, row].neighbours[(int)Direction.Left] = tiles[col - 1, row];
+                    if ( col < width - 1 )
+                        tiles[col, row].neighbours[(int)Direction.Right] = tiles[col + 1, row];
+                    if ( row > 0 )
+                        tiles[col, row].neighbours[(int)Direction.Up] = tiles[col, row - 1];
+                    if ( row < height - 1 )
+                        tiles[col, row].neighbours[(int)Direction.Down] = tiles[col, row + 1];
+                }
+            }
         }
 
         private void FindSymmetry()
@@ -425,42 +501,40 @@ namespace SyncomaniaSolver
         /// <summary>
         /// Calculate distance to exit for every map tile. BFS used.
         /// </summary>
-        private void CalculateDistanceToExit()
+        private bool CalculateDistanceToExit()
         {
-            Queue<Pos> frontTiles = new Queue<Pos>(256);
+            if ( ExitTile == null )
+                return false;
 
-            frontTiles.Enqueue( ExitPos );
+            Queue<MapTile> frontTiles = new Queue<MapTile>(256);
 
-            this[ExitPos].distanceToExit = 0;
+            frontTiles.Enqueue( ExitTile );
 
-            Action<Pos, int, int> f = ( pos, dx, dy ) =>
+            ExitTile.distanceToExit = 0;
+
+            Action<MapTile, Direction> f = ( tile, dir ) =>
             {
-                var x = pos.x + dx;
-                var y = pos.y + dy;
-
-                if ( x < 0 || x >= width || y < 0 || y >= height )
+                var nextTile = tile.neighbours[(int)dir];
+                if ( nextTile == null ||
+                     nextTile.type == MapTile.TileType.Block ||
+                     nextTile.type == MapTile.TileType.Trap ||
+                     nextTile.distanceToExit != int.MaxValue )
                     return;
 
-                var tile = tiles[x, y];
-                var tiletype = tile.type;
-
-                if ( tiletype == MapTile.TileType.Block || tiletype == MapTile.TileType.Trap || tile.distanceToExit != int.MaxValue )
-                    return;
-
-                tiles[x, y].distanceToExit = this[pos].distanceToExit + 1;
-
-                frontTiles.Enqueue( new Pos { x = x, y = y } );
+                nextTile.distanceToExit = tile.distanceToExit + 1;
+                frontTiles.Enqueue( nextTile );
             };
 
             while ( frontTiles.Count > 0 )
             {
                 var tile = frontTiles.Dequeue();
-
-                f( tile, -1, 0 );
-                f( tile, 0, -1 );
-                f( tile, 1, 0 );
-                f( tile, 0, 1 );
+                f( tile, Direction.Left );
+                f( tile, Direction.Up );
+                f( tile, Direction.Right );
+                f( tile, Direction.Down );
             }
+
+            return true;
         }
         /// <summary>
         /// BFS algorithm
@@ -491,10 +565,10 @@ namespace SyncomaniaSolver
                 return allUniqueStates.Contains( hash ) == false;
             };
 
-            Func<GameState, int, int, bool> f = (state, dx, dy) =>
+            Func<GameState, Direction, bool> f = (state, dir) =>
             {
-                GameState newState;
-                if ( GetNewState( state, dx, dy, checkHash, out newState ) )
+                GameState newState = GetNewState( state, dir, checkHash );
+                if ( newState != null )
                 {
                     if ( newState.IsFinished() )
                     {
@@ -520,13 +594,13 @@ namespace SyncomaniaSolver
             {
                 currentState = frontStates.Dequeue();
 
-                if ( f( currentState, -1, 0 ) )
+                if ( f( currentState, Direction.Left ) )
                     break;
-                if ( f( currentState, 0, -1 ) )
+                if ( f( currentState, Direction.Up ) )
                     break;
-                if ( f( currentState, 1, 0 ) )
+                if ( f( currentState, Direction.Right ) )
                     break;
-                if ( f( currentState, 0, 1 ) )
+                if ( f( currentState, Direction.Down ) )
                     break;
 
                 iterations++;
@@ -570,10 +644,10 @@ namespace SyncomaniaSolver
                 return allUniqueStates.Contains( hash ) == false;
             };
 
-            Func<GameState, int, int, bool> f = ( state, dx, dy ) =>
+            Func<GameState, Direction, bool> f = ( state, dir ) =>
             {
-                GameState newState;
-                if ( GetNewState( state, dx, dy, checkHash, out newState ) )
+                GameState newState = GetNewState( state, dir, checkHash );
+                if ( newState != null )
                 {
                     if ( newState.IsFinished() )
                     {
@@ -601,13 +675,13 @@ namespace SyncomaniaSolver
             {
                 currentState = frontStates.RemoveMin();
 
-                if ( f( currentState, -1, 0 ) )
+                if ( f( currentState, Direction.Left ) )
                     break;
-                if ( f( currentState, 0, -1 ) )
+                if ( f( currentState, Direction.Up ) )
                     break;
-                if ( f( currentState, 1, 0 ) )
+                if ( f( currentState, Direction.Right ) )
                     break;
-                if ( f( currentState, 0, 1 ) )
+                if ( f( currentState, Direction.Down ) )
                     break;
 
                 iterations++;
@@ -625,12 +699,12 @@ namespace SyncomaniaSolver
 
         }
 
-        private int CalculateStateHash( ref Pos? pos1, ref Pos? pos2, ref Pos? pos3, ref Pos? pos4 )
+        private int CalculateStateHash( MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4 )
         {
-            byte hl0 = (byte)( pos1.HasValue ? pos1.Value.y * width + pos1.Value.x + 1 : 0 );
-            byte hl1 = (byte)( pos2.HasValue ? pos2.Value.y * width + pos2.Value.x + 1 : 0 );
-            byte hl2 = (byte)( pos3.HasValue ? pos3.Value.y * width + pos3.Value.x + 1 : 0 );
-            byte hl3 = (byte)( pos4.HasValue ? pos4.Value.y * width + pos4.Value.x + 1 : 0 );
+            byte hl0 = (byte)( pos1 != null ? pos1.Index : 0 );
+            byte hl1 = (byte)( pos2 != null ? pos2.Index : 0 );
+            byte hl2 = (byte)( pos3 != null ? pos3.Index : 0 );
+            byte hl3 = (byte)( pos4 != null ? pos4.Index : 0 );
 
             byte tmp;
             if ( hl1 < hl0 )
@@ -683,10 +757,10 @@ namespace SyncomaniaSolver
             var add_v = vert * ( height - 1 );
             var mul_v = 1 - 2 * vert;
 
-            byte hl0 = (byte)( st.pos1.HasValue ? ( add_v + mul_v * st.pos1.Value.y ) * width + add_h + mul_h * st.pos1.Value.x : 0 );
-            byte hl1 = (byte)( st.pos2.HasValue ? ( add_v + mul_v * st.pos2.Value.y ) * width + add_h + mul_h * st.pos2.Value.x : 0 );
-            byte hl2 = (byte)( st.pos3.HasValue ? ( add_v + mul_v * st.pos3.Value.y ) * width + add_h + mul_h * st.pos3.Value.x : 0 );
-            byte hl3 = (byte)( st.pos4.HasValue ? ( add_v + mul_v * st.pos4.Value.y ) * width + add_h + mul_h * st.pos4.Value.x : 0 );
+            byte hl0 = (byte)( st.pos1 != null ? ( add_v + mul_v * st.pos1.position.y ) * width + add_h + mul_h * st.pos1.position.x : 0 );
+            byte hl1 = (byte)( st.pos2 != null ? ( add_v + mul_v * st.pos2.position.y ) * width + add_h + mul_h * st.pos2.position.x : 0 );
+            byte hl2 = (byte)( st.pos3 != null ? ( add_v + mul_v * st.pos3.position.y ) * width + add_h + mul_h * st.pos3.position.x : 0 );
+            byte hl3 = (byte)( st.pos4 != null ? ( add_v + mul_v * st.pos4.position.y ) * width + add_h + mul_h * st.pos4.position.x : 0 );
             byte tmp;
             if ( hl1 < hl0 )
             {
