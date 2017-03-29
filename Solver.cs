@@ -29,7 +29,7 @@ namespace SyncomaniaSolver
             PusherRight,
         }
 
-        public MapTile( TileType type, int x, int y, int index )
+        public MapTile( TileType type, int x, int y, int[] index )
         {
             this.type = type;
             position = new Pos{ x = x, y = y };
@@ -39,7 +39,7 @@ namespace SyncomaniaSolver
         public int distanceToExit = int.MaxValue;
         public Pos position;
         public MapTile[] neighbours = new MapTile[4];
-        public int Index { get; private set; }
+        public int[] Index { get; private set; }
     }
 
     public class GameState : IComparable<GameState>
@@ -75,7 +75,7 @@ namespace SyncomaniaSolver
 
         public override string ToString()
         {
-            return string.Format( "mode dir: {0}", moveDir.ToString() );
+            return string.Format( "move:  {0}", moveDir.ToString() );
         }
 
         public bool Equals( GameState other )
@@ -253,7 +253,7 @@ namespace SyncomaniaSolver
                     return false;
                 }
 
-                var tile = new MapTile( tileType, x, y, index );
+                var tile = new MapTile( tileType, x, y, GetIndexBySymmetry( index, x, y ) );
                 tiles[x, y] = tile;
 
                 if ( tileType == MapTile.TileType.Exit )
@@ -295,6 +295,16 @@ namespace SyncomaniaSolver
             var res = CalculateDistanceToExit();
 
             return res;
+        }
+
+        private int[] GetIndexBySymmetry( int index, int x, int y )
+        {
+            var arr = new int[4];
+            arr[0] = index;
+            arr[1] = width * (y + 1) - x - 1;
+            arr[2] = width * ( height - y - 1 ) + x;
+            arr[3] = width * height - index;
+            return arr;
         }
 
         public bool LoadMap( string map )
@@ -424,17 +434,26 @@ namespace SyncomaniaSolver
                  pos3 != null && pos3 == pos4 )
                 return null;
 
-            var hash = CalculateStateHash( pos1, pos2, pos3, pos4 );
-
-            if ( checkHash(hash) == false )
+            var hash = CalculateStateHash( pos1, pos2, pos3, pos4, eMapSymmetry.None );
+            if ( checkHash( hash ) == false )
                 return null;
+
+            //for ( eMapSymmetry s = eMapSymmetry.Horizontal; s <= eMapSymmetry.Both; s++ )
+            //{
+            //    if ( ( Symmetry & s ) == s )
+            //    {
+            //        var hashOther = CalculateStateHash( pos1, pos2, pos3, pos4, s );
+            //        if ( checkHash( hashOther ) == false )
+            //            return null;
+            //    }
+            //}
 
             return new GameState( currentState, pos1, pos2, pos3, pos4, dir, hash );
         }
 
         public GameState GetStartingState()
         {
-            var hash = CalculateStateHash( actors[0], actors[1], actors[2], actors[3] );
+            var hash = CalculateStateHash( actors[0], actors[1], actors[2], actors[3], eMapSymmetry.None );
 
             return new GameState( null, actors[0], actors[1], actors[2], actors[3], Direction.Left, hash );
         }
@@ -577,12 +596,12 @@ namespace SyncomaniaSolver
                     }
 
                     allUniqueStates.Add( newState.Hash );
-                    if ( ( Symmetry & eMapSymmetry.Horizontal ) == eMapSymmetry.Horizontal )
-                        allUniqueStates.Add( GetHashForSymmetricState( newState, 1, 0 ) );
-                    if ( ( Symmetry & eMapSymmetry.Vertical ) == eMapSymmetry.Vertical )
-                        allUniqueStates.Add( GetHashForSymmetricState( newState, 0, 1 ) );
-                    if ( ( Symmetry & eMapSymmetry.Both ) == eMapSymmetry.Both )
-                        allUniqueStates.Add( GetHashForSymmetricState( newState, 1, 1 ) );
+                    //if ( ( Symmetry & eMapSymmetry.Horizontal ) == eMapSymmetry.Horizontal )
+                    //    allUniqueStates.Add( GetHashForSymmetricState( newState, 1, 0 ) );
+                    //if ( ( Symmetry & eMapSymmetry.Vertical ) == eMapSymmetry.Vertical )
+                    //    allUniqueStates.Add( GetHashForSymmetricState( newState, 0, 1 ) );
+                    //if ( ( Symmetry & eMapSymmetry.Both ) == eMapSymmetry.Both )
+                    //    allUniqueStates.Add( GetHashForSymmetricState( newState, 1, 1 ) );
 
                     frontStates.Enqueue( newState );
                 }
@@ -656,12 +675,12 @@ namespace SyncomaniaSolver
                     }
 
                     allUniqueStates.Add(newState.Hash);
-                    if ((Symmetry & eMapSymmetry.Horizontal) == eMapSymmetry.Horizontal)
-                        allUniqueStates.Add(GetHashForSymmetricState(newState, 1, 0));
-                    if ((Symmetry & eMapSymmetry.Vertical) == eMapSymmetry.Vertical)
-                        allUniqueStates.Add(GetHashForSymmetricState(newState, 0, 1));
-                    if ((Symmetry & eMapSymmetry.Both) == eMapSymmetry.Both)
-                        allUniqueStates.Add(GetHashForSymmetricState(newState, 1, 1));
+                    //if ((Symmetry & eMapSymmetry.Horizontal) == eMapSymmetry.Horizontal)
+                    //    allUniqueStates.Add(GetHashForSymmetricState(newState, 1, 0));
+                    //if ((Symmetry & eMapSymmetry.Vertical) == eMapSymmetry.Vertical)
+                    //    allUniqueStates.Add(GetHashForSymmetricState(newState, 0, 1));
+                    //if ((Symmetry & eMapSymmetry.Both) == eMapSymmetry.Both)
+                    //    allUniqueStates.Add(GetHashForSymmetricState(newState, 1, 1));
 
                     newState.CalculateWeight( this );
 
@@ -699,103 +718,40 @@ namespace SyncomaniaSolver
 
         }
 
-        private int CalculateStateHash( MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4 )
+        private int CalculateStateHash( MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4, eMapSymmetry symmetry )
         {
-            byte hl0 = (byte)( pos1 != null ? pos1.Index : 0 );
-            byte hl1 = (byte)( pos2 != null ? pos2.Index : 0 );
-            byte hl2 = (byte)( pos3 != null ? pos3.Index : 0 );
-            byte hl3 = (byte)( pos4 != null ? pos4.Index : 0 );
+            byte hl0 = (byte)( pos1 != null ? pos1.Index[(int)symmetry] : 0 );
+            byte hl1 = (byte)( pos2 != null ? pos2.Index[(int)symmetry] : 0 );
+            byte hl2 = (byte)( pos3 != null ? pos3.Index[(int)symmetry] : 0 );
+            byte hl3 = (byte)( pos4 != null ? pos4.Index[(int)symmetry] : 0 );
 
             byte tmp;
-            if ( hl1 < hl0 )
-            {
+            if ( hl1 < hl0 ) {
                 tmp = hl0;
                 hl0 = hl1;
                 hl1 = tmp;
             }
-            if ( hl3 < hl2 )
-            {
+            if ( hl3 < hl2 ) {
                 tmp = hl2;
                 hl2 = hl3;
                 hl3 = tmp;
             }
-
-            if ( hl3 < hl0 )
-            {
+            if ( hl3 < hl0 ) {
                 tmp = hl0;
                 hl0 = hl3;
                 hl3 = tmp;
             }
-            if ( hl2 < hl1 )
-            {
+            if ( hl2 < hl1 ) {
                 tmp = hl2;
                 hl2 = hl1;
                 hl1 = tmp;
             }
-
-            if ( hl1 < hl0 )
-            {
+            if ( hl1 < hl0 ) {
                 tmp = hl0;
                 hl0 = hl1;
                 hl1 = tmp;
             }
-            if ( hl3 < hl2 )
-            {
-                tmp = hl2;
-                hl2 = hl3;
-                hl3 = tmp;
-            }
-
-            return hl0 | ( hl1 << 8 ) | ( hl2 << 16 ) | ( hl3 << 24 );
-        }
-
-        private int GetHashForSymmetricState( GameState st, int horiz, int vert )
-        {
-            var add_h = horiz * (width - 1) + 1;
-            var mul_h = 1 - 2 * horiz;
-
-            var add_v = vert * ( height - 1 );
-            var mul_v = 1 - 2 * vert;
-
-            byte hl0 = (byte)( st.pos1 != null ? ( add_v + mul_v * st.pos1.position.y ) * width + add_h + mul_h * st.pos1.position.x : 0 );
-            byte hl1 = (byte)( st.pos2 != null ? ( add_v + mul_v * st.pos2.position.y ) * width + add_h + mul_h * st.pos2.position.x : 0 );
-            byte hl2 = (byte)( st.pos3 != null ? ( add_v + mul_v * st.pos3.position.y ) * width + add_h + mul_h * st.pos3.position.x : 0 );
-            byte hl3 = (byte)( st.pos4 != null ? ( add_v + mul_v * st.pos4.position.y ) * width + add_h + mul_h * st.pos4.position.x : 0 );
-            byte tmp;
-            if ( hl1 < hl0 )
-            {
-                tmp = hl0;
-                hl0 = hl1;
-                hl1 = tmp;
-            }
-            if ( hl3 < hl2 )
-            {
-                tmp = hl2;
-                hl2 = hl3;
-                hl3 = tmp;
-            }
-
-            if ( hl3 < hl0 )
-            {
-                tmp = hl0;
-                hl0 = hl3;
-                hl3 = tmp;
-            }
-            if ( hl2 < hl1 )
-            {
-                tmp = hl2;
-                hl2 = hl1;
-                hl1 = tmp;
-            }
-
-            if ( hl1 < hl0 )
-            {
-                tmp = hl0;
-                hl0 = hl1;
-                hl1 = tmp;
-            }
-            if ( hl3 < hl2 )
-            {
+            if ( hl3 < hl2 ) {
                 tmp = hl2;
                 hl2 = hl3;
                 hl3 = tmp;
