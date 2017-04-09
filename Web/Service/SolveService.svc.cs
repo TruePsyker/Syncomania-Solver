@@ -11,38 +11,36 @@ namespace Service
     // ПРИМЕЧАНИЕ. Чтобы запустить клиент проверки WCF для тестирования службы, выберите элементы WebService.svc или WebService.svc.cs в обозревателе решений и начните отладку.
     public class SolveService : ISolveService
     {
-        public string Solve( string input )
+        public List<SyncomaniaSolver.Direction> Solve( string input )
         {
             var gm = new SyncomaniaSolver.GameMap();
 
             try {
                 if ( gm.LoadMap( input ) == false )
-                    return string.Empty;
+                    return null;
 
                 var gs = gm.Solve_AStar();
 
                 return HistoryDumper( gs );
             } catch { }
                 
-            return "An error has occured";
+            return null;
         }
 
-        static string HistoryDumper( SyncomaniaSolver.GameState stateAtFinish )
+        static List<SyncomaniaSolver.Direction> HistoryDumper( SyncomaniaSolver.GameState stateAtFinish )
         {
             if ( stateAtFinish.IsFinished() )
             {
-                StringBuilder strSolution = new StringBuilder();
-                strSolution.AppendLine( String.Format( "Solution turns count: {0}", stateAtFinish.turn ) );
-
+                List<SyncomaniaSolver.Direction> moves = new List<SyncomaniaSolver.Direction>();
                 foreach ( var state in stateAtFinish.History )
                 {
-                    strSolution.AppendLine( state.ToString() );
+                    moves.Add( state.moveDir );
                 }
-                return strSolution.ToString();
+                return moves;
             }
             else
             {
-                return "No solution found.";
+                return null;
             }
         }
     }

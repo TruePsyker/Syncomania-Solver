@@ -16,6 +16,6 @@ namespace Service
         [WebInvoke(Method = "GET",
             ResponseFormat = WebMessageFormat.Json,
             UriTemplate = "solve/{input}")]
-        string Solve( string input );
+        List<SyncomaniaSolver.Direction> Solve( string input );
     }
 }
