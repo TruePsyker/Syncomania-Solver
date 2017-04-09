@@ -29,6 +29,8 @@ namespace SyncomaniaSolver
             PusherRight,
         }
 
+        public static char[] EncodedTiles = { '.', 'b', 'e', 't', 'u', 'd', 'l', 'r' };
+
         public MapTile( TileType type, int x, int y, int[] index )
         {
             this.type = type;
