@@ -235,6 +235,22 @@ namespace SyncomaniaSolverTests
         }
 
         [TestMethod]
+        public void Map_GetNewState_AntiActor_IsValid()
+        {
+            GameMap.TestIsOn = true;
+            var map = new GameMap();
+            var data = new string[] { " a ",
+                                      "  " };
+            MapTile pos, newpos;
+
+            pos = map[0, 0];
+            var bValidState =  map.Get
+            map.LoadMap( data );
+
+        }
+
+        [TestCategory("Core")]
+        [TestMethod]
         public void Map_CalculateDistanceToExit_IsValid()
         {
             GameMap.TestIsOn = true;
