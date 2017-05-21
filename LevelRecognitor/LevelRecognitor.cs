@@ -57,12 +57,28 @@ namespace SyncomaniaSolver
             {
                 return new Vector3{ x = Math.Max(left.x, right.x), y = Math.Max(left.y, right.y), z = Math.Max(left.z, right.z) };
             }
+
+            public float Affinity( Vector3 right )
+            {
+                var dist = ( right.x - x ) * ( right.x - x ) + ( right.y - y ) * ( right.y - y ) + ( right.z - z ) * ( right.z - z );
+
+                return Math.Max( 0.0f, 1.0f - 5.0f * dist );
+            }
+        }
+
+        enum EColorIndex
+        {
+            Blue = 0,
+            Red,
+            Green,
+            White,
+            COUNT
         }
 
         struct Symbol
         {
             public int symbolIdx;
-            public Vector3 colorWeight;
+            public EColorIndex colorIdx;
             public int maskIdx;
         }
 
@@ -71,16 +87,22 @@ namespace SyncomaniaSolver
         const int dataSizeX = 400;
         const int dataSizeY = 400;
 
-        static Symbol[] symbols = new Symbol[10] { new Symbol { symbolIdx = 0, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 0 }, // Block
-                                                   new Symbol { symbolIdx = 1, colorWeight = new Vector3( -1, 1, -1 ), maskIdx = 0 }, // Exit
-                                                   new Symbol { symbolIdx = 2, colorWeight = new Vector3( 1, -1, -1 ), maskIdx = 0 }, // Trap
-                                                   new Symbol { symbolIdx = 3, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 1 }, // Actor
-                                                   new Symbol { symbolIdx = 4, colorWeight = new Vector3( 1, -1, -1 ), maskIdx = 1 }, // AntiActor
-                                                   new Symbol { symbolIdx = 5, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 6 }, // Box
-                                                   new Symbol { symbolIdx = 6, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 2 }, // Pusher left
-                                                   new Symbol { symbolIdx = 7, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 3 }, // Pusher up
-                                                   new Symbol { symbolIdx = 8, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 4 }, // Pusher right
-                                                   new Symbol { symbolIdx = 9, colorWeight = new Vector3( 1, 1, 1 ), maskIdx = 5 },}; // Pusher down
+        static Vector3 Blue = new Vector3( 0.467f, 0.56f, 0.6f );
+        static Vector3 Red = new Vector3( 1.0f, 0.212f, 0.144f );
+        static Vector3 Green = new Vector3( 0.481f, 1.0f, 0.0f );
+        static Vector3 White = new Vector3( 1.0f, 1.0f, 1.0f );
+        static Vector3[] Colors = new Vector3[(int)EColorIndex.COUNT] { Blue, Red, Green, White };
+
+        static Symbol[] symbols = new Symbol[10] { new Symbol { symbolIdx = 0, colorIdx = EColorIndex.Blue, maskIdx = 0 }, // Block
+                                                   new Symbol { symbolIdx = 1, colorIdx = EColorIndex.Green, maskIdx = 0 }, // Exit
+                                                   new Symbol { symbolIdx = 2, colorIdx = EColorIndex.Red, maskIdx = 0 }, // Trap
+                                                   new Symbol { symbolIdx = 3, colorIdx = EColorIndex.White, maskIdx = 1 }, // Actor
+                                                   new Symbol { symbolIdx = 4, colorIdx = EColorIndex.Red, maskIdx = 1 }, // AntiActor
+                                                   new Symbol { symbolIdx = 5, colorIdx = EColorIndex.Blue, maskIdx = 6 }, // Box
+                                                   new Symbol { symbolIdx = 6, colorIdx = EColorIndex.White, maskIdx = 2 }, // Pusher left
+                                                   new Symbol { symbolIdx = 7, colorIdx = EColorIndex.White, maskIdx = 3 }, // Pusher up
+                                                   new Symbol { symbolIdx = 8, colorIdx = EColorIndex.White, maskIdx = 4 }, // Pusher right
+                                                   new Symbol { symbolIdx = 9, colorIdx = EColorIndex.White, maskIdx = 5 },}; // Pusher down
 
         public LevelRecognitor( string fileName )
         {
@@ -97,12 +119,17 @@ namespace SyncomaniaSolver
             g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
             g.DrawImage( bmp, new Rectangle( 0, 0, dataSizeX, dataSizeY ), 0, 0, bmp.Width, bmp.Width, GraphicsUnit.Pixel );
 
-            Vector3[,] inputData = new Vector3[dataSizeY, dataSizeX];
+            float[][,] inputData = new float[Colors.Length][,];
+            for ( int i = 0; i < inputData.Length; i++ )
+                inputData[i] = new float[dataSizeY, dataSizeX];
+
             for ( int y = 0; y < dataSizeY; y++ )
             {
                 for ( int x = 0; x < dataSizeX; x++ )
                 {
-                    inputData[y, x] = NormalizeInput( dest.GetPixel( x, y ) );
+                    var normInput = NormalizeInput( dest.GetPixel( x, y ) ); ;
+                    for ( int i = 0; i < inputData.Length; i++ )
+                        inputData[i][y,x] = Colors[i].Affinity( normInput );
                 }
             }
 
@@ -111,6 +138,7 @@ namespace SyncomaniaSolver
             var masksBmp = new Bitmap( myAssembly.GetManifestResourceStream( "LevelRecognitor.masks_34.png" ) );
             var frameSize = masksBmp.Width;
             var masks = new float[masksBmp.Height / frameSize][,];
+            var biases = new float[masks.Length];
             for ( int idx = 0; idx < masks.Length; idx++ )
             {
                 masks[idx] = new float[frameSize, frameSize];
@@ -118,23 +146,9 @@ namespace SyncomaniaSolver
                 {
                     for ( int x = 0; x < frameSize; x++ )
                     {
-                        masks[idx][y, x] = masksBmp.GetPixel( x, y + idx * frameSize ).R / 127.5f - 1.0f; // [0, 255] to [-1.0f, 1.0f]
-                    }
-                }
-            }
-
-            var weights = new Vector3[symbols.Length][,];
-            var biases = new float[symbols.Length];
-            for ( int idx = 0; idx < weights.Length; idx++ )
-            {
-                weights[idx] = new Vector3[frameSize, frameSize];
-                for ( int y = 0; y < frameSize; y++ )
-                {
-                    for ( int x = 0; x < frameSize; x++ )
-                    {
-                        var maskValue = masks[symbols[idx].maskIdx][y, x];
-                        weights[idx][y, x] = Vector3.Min( symbols[idx].colorWeight, maskValue );
-                        if ( maskValue > 0.5f )
+                        var maskValue = masksBmp.GetPixel( x, y + idx * frameSize ).R / 127.5f - 1.0f; // [0, 255] to [-1.0f, 1.0f]
+                        masks[idx][y, x] = maskValue;
+                        if ( maskValue > 0.0f )
                             biases[idx] += maskValue;
                     }
                 }
@@ -151,8 +165,9 @@ namespace SyncomaniaSolver
 
             for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
             {
-                var symWeights = weights[symbolIdx];
+                var symWeights = masks[symbols[symbolIdx].maskIdx];
                 var symResults = result[symbolIdx];
+                var symInput = inputData[(int)symbols[symbolIdx].colorIdx];
                 for ( int frameY = 0; frameY < sizeY; frameY++ )
                 {
                     for ( int frameX = 0; frameX < sizeX; frameX++ )
@@ -163,7 +178,7 @@ namespace SyncomaniaSolver
                         {
                             for ( int x = 0; x < frameSize; x++ )
                             {
-                                weight += inputData[y + frameY, x + frameX].Dot( symWeights[y, x] );
+                                weight += symWeights[y, x] * symInput[y + frameY, x + frameX];
                             }
                         }
 
@@ -178,7 +193,7 @@ namespace SyncomaniaSolver
 
             for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
             {
-                var symBiases = biases[symbolIdx];
+                var symBiases = biases[symbols[symbolIdx].maskIdx];
                 for ( int frameY = 0, baseOffsetY = symbolIdx * perMaskOffset * 4; frameY < sizeY; frameY++, baseOffsetY += sizeX * 4 )
                 {
                     for ( int frameX = 0, baseOffset = baseOffsetY; frameX < sizeX; frameX++, baseOffset+=4 )
