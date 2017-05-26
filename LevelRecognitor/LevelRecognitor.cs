@@ -77,15 +77,19 @@ namespace SyncomaniaSolver
 
         struct Symbol
         {
-            public int symbolIdx;
+            public MapTile.TileType tileType;
+            public MovingObject.ObjectType objectType;
             public EColorIndex colorIdx;
             public int maskIdx;
         }
 
-        public const int LevelSize = 11;
+        public const int LevelExtents = 11;
+        public const int LevelExtents2 = LevelExtents * LevelExtents;
 
         const int dataSizeX = 400;
         const int dataSizeY = 400;
+
+        const float WeightThreshold = 0.75f;
 
         static Vector3 Blue = new Vector3( 0.467f, 0.56f, 0.6f );
         static Vector3 Red = new Vector3( 1.0f, 0.212f, 0.144f );
@@ -93,16 +97,16 @@ namespace SyncomaniaSolver
         static Vector3 White = new Vector3( 1.0f, 1.0f, 1.0f );
         static Vector3[] Colors = new Vector3[(int)EColorIndex.COUNT] { Blue, Red, Green, White };
 
-        static Symbol[] symbols = new Symbol[10] { new Symbol { symbolIdx = 0, colorIdx = EColorIndex.Blue, maskIdx = 0 }, // Block
-                                                   new Symbol { symbolIdx = 1, colorIdx = EColorIndex.Green, maskIdx = 0 }, // Exit
-                                                   new Symbol { symbolIdx = 2, colorIdx = EColorIndex.Red, maskIdx = 0 }, // Trap
-                                                   new Symbol { symbolIdx = 3, colorIdx = EColorIndex.White, maskIdx = 1 }, // Actor
-                                                   new Symbol { symbolIdx = 4, colorIdx = EColorIndex.Red, maskIdx = 1 }, // AntiActor
-                                                   new Symbol { symbolIdx = 5, colorIdx = EColorIndex.Blue, maskIdx = 6 }, // Box
-                                                   new Symbol { symbolIdx = 6, colorIdx = EColorIndex.White, maskIdx = 2 }, // Pusher left
-                                                   new Symbol { symbolIdx = 7, colorIdx = EColorIndex.White, maskIdx = 3 }, // Pusher up
-                                                   new Symbol { symbolIdx = 8, colorIdx = EColorIndex.White, maskIdx = 4 }, // Pusher right
-                                                   new Symbol { symbolIdx = 9, colorIdx = EColorIndex.White, maskIdx = 5 },}; // Pusher down
+        static Symbol[] symbols = new Symbol[10] { new Symbol { tileType = MapTile.TileType.Block, colorIdx = EColorIndex.Blue, maskIdx = 0 }, // Block
+                                                   new Symbol { tileType = MapTile.TileType.Exit, colorIdx = EColorIndex.Green, maskIdx = 0 }, // Exit
+                                                   new Symbol { tileType = MapTile.TileType.Trap, colorIdx = EColorIndex.Red, maskIdx = 0 }, // Trap
+                                                   new Symbol { objectType = MovingObject.ObjectType.Actor, colorIdx = EColorIndex.White, maskIdx = 1 }, // Actor
+                                                   new Symbol { objectType = MovingObject.ObjectType.AntiActor, colorIdx = EColorIndex.Red, maskIdx = 1 }, // AntiActor
+                                                   new Symbol { objectType = MovingObject.ObjectType.Box, colorIdx = EColorIndex.Blue, maskIdx = 6 }, // Box
+                                                   new Symbol { tileType = MapTile.TileType.PusherLeft, colorIdx = EColorIndex.White, maskIdx = 2 }, // Pusher left
+                                                   new Symbol { tileType = MapTile.TileType.PusherUp, colorIdx = EColorIndex.White, maskIdx = 3 }, // Pusher up
+                                                   new Symbol { tileType = MapTile.TileType.PusherRight, colorIdx = EColorIndex.White, maskIdx = 4 }, // Pusher right
+                                                   new Symbol { tileType = MapTile.TileType.PusherDown, colorIdx = EColorIndex.White, maskIdx = 5 },}; // Pusher down
 
         public LevelRecognitor( string fileName )
         {
@@ -157,17 +161,28 @@ namespace SyncomaniaSolver
             var sizeX = dataSizeX - frameSize;
             var sizeY = dataSizeY - frameSize;
 
-            var perMaskOffset = sizeX * sizeY;
-
+#if DUMP_RESULT
             var result = new float[symbols.Length][,];
             for ( int i = 0; i < result.Length; i++ )
                 result[i] = new float[sizeY, sizeX];
+#endif
+            ILevelEncoder encoder = new DefaultLevelEncoder();
+
+            var defValue = encoder.EncodeTile( MapTile.TileType.Empty, MovingObject.ObjectType.None );
+            StringBuilder output = new StringBuilder(LevelExtents2);
+            output.Length = LevelExtents2;
+            for ( int i = 0; i < LevelExtents2; i++ )
+                output[i] = defValue;
 
             for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
             {
-                var symWeights = masks[symbols[symbolIdx].maskIdx];
+                var symbol = symbols[symbolIdx];
+                var symWeights = masks[symbol.maskIdx];
+#if DUMP_RESULT
                 var symResults = result[symbolIdx];
-                var symInput = inputData[(int)symbols[symbolIdx].colorIdx];
+#endif
+                var symInput = inputData[(int)symbol.colorIdx];
+                var symBiases = biases[symbol.maskIdx];
                 for ( int frameY = 0; frameY < sizeY; frameY++ )
                 {
                     for ( int frameX = 0; frameX < sizeX; frameX++ )
@@ -181,16 +196,23 @@ namespace SyncomaniaSolver
                                 weight += symWeights[y, x] * symInput[y + frameY, x + frameX];
                             }
                         }
-
+                        if ( weight / symBiases > WeightThreshold )
+                        {
+                            frameX = frameX * LevelExtents / sizeX;
+                            output[(frameY * LevelExtents / sizeY) * LevelExtents + frameX] = encoder.EncodeTile( symbol.tileType, symbol.objectType );
+                            frameX = (frameX + 1) * sizeX / LevelExtents;
+                        }
+#if DUMP_RESULT
                         symResults[frameY, frameX] = weight;
+#endif
                     }
                 }
                 Console.WriteLine( symbolIdx.ToString() );
             }
-
-            var output = new Bitmap( dataSizeX - frameSize, sizeY * symbols.Length, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
-            var hbmp = output.LockBits( new Rectangle( 0, 0, output.Width, output.Height ), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
-
+#if DUMP_RESULT
+            var dumpOutput = new Bitmap( dataSizeX - frameSize, sizeY * symbols.Length, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
+            var hbmp = dumpOutput.LockBits( new Rectangle( 0, 0, dumpOutput.Width, dumpOutput.Height ), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
+            var perMaskOffset = sizeX * sizeY;
             for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
             {
                 var symBiases = biases[symbols[symbolIdx].maskIdx];
@@ -209,8 +231,11 @@ namespace SyncomaniaSolver
                 }
             }
 
-            output.UnlockBits( hbmp );
-            output.Save( "result.png", System.Drawing.Imaging.ImageFormat.Png );
+            dumpOutput.UnlockBits( hbmp );
+            dumpOutput.Save( "result.png", System.Drawing.Imaging.ImageFormat.Png );
+#endif
+            Success = true;
+            Output = output.ToString();
         }
 
         private Vector3 NormalizeInput( Color input )

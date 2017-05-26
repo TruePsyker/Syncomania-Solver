@@ -12,18 +12,11 @@ namespace SyncomaniaSolver
         {
             var recognitor = new LevelRecognitor( args[0] );
 
-            if ( recognitor.Success == false )
-                return;
-            //if ( recognitor.Success )
-            //{
-            //    Console.WriteLine( recognitor.Output );
-            //}
-
             int cnt = 0;
             foreach ( var ch in recognitor.Output )
             {
                 Console.Write( ch );
-                if ( ++cnt == LevelRecognitor.LevelSize )
+                if ( ++cnt == LevelRecognitor.LevelExtents )
                 {
                     cnt = 0;
                     Console.Write( '\n' );
