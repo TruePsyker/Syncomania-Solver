@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Text;
 using System.Drawing;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Diagnostics;
 
 namespace SyncomaniaSolver
 {
@@ -89,7 +92,7 @@ namespace SyncomaniaSolver
         const int dataSizeX = 400;
         const int dataSizeY = 400;
 
-        const float WeightThreshold = 0.75f;
+        const float WeightThreshold = 0.72f;
 
         static Vector3 Blue = new Vector3( 0.467f, 0.56f, 0.6f );
         static Vector3 Red = new Vector3( 1.0f, 0.212f, 0.144f );
@@ -174,6 +177,7 @@ namespace SyncomaniaSolver
             for ( int i = 0; i < LevelExtents2; i++ )
                 output[i] = defValue;
 
+            var sw = Stopwatch.StartNew();
             for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
             {
                 var symbol = symbols[symbolIdx];
@@ -183,10 +187,21 @@ namespace SyncomaniaSolver
 #endif
                 var symInput = inputData[(int)symbol.colorIdx];
                 var symBiases = biases[symbol.maskIdx];
-                for ( int frameY = 0; frameY < sizeY; frameY++ )
+
+                // TODO: Go through all 'tiles' instead
+                //for ( int frameY = 0; frameY < sizeY; frameY++ )
+                Parallel.For( 0, sizeY, frameY =>
                 {
+                    var tilePos = ( frameY * LevelExtents / sizeY ) * LevelExtents;
                     for ( int frameX = 0; frameX < sizeX; frameX++ )
                     {
+                        var tileX = frameX * LevelExtents / sizeX;
+                        if ( output[tilePos + tileX] != defValue )
+                        {
+                            frameX = ( tileX + 1 ) * sizeX / LevelExtents;
+                            continue;
+                        }
+
                         float weight = 0.0f;
 
                         for ( int y = 0; y < frameSize; y++ ) // Matmul (input,masks)
@@ -198,17 +213,16 @@ namespace SyncomaniaSolver
                         }
                         if ( weight / symBiases > WeightThreshold )
                         {
-                            frameX = frameX * LevelExtents / sizeX;
-                            output[(frameY * LevelExtents / sizeY) * LevelExtents + frameX] = encoder.EncodeTile( symbol.tileType, symbol.objectType );
-                            frameX = (frameX + 1) * sizeX / LevelExtents;
+                            output[tilePos + tileX] = encoder.EncodeTile( symbol.tileType, symbol.objectType );
+                            frameX = ( tileX + 1 ) * sizeX / LevelExtents;
                         }
 #if DUMP_RESULT
                         symResults[frameY, frameX] = weight;
 #endif
                     }
-                }
-                Console.WriteLine( symbolIdx.ToString() );
-            }
+                } );
+            } //);
+            Console.WriteLine( String.Format( "Elapsed time: {0} ms", sw.ElapsedMilliseconds ) );
 #if DUMP_RESULT
             var dumpOutput = new Bitmap( dataSizeX - frameSize, sizeY * symbols.Length, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
             var hbmp = dumpOutput.LockBits( new Rectangle( 0, 0, dumpOutput.Width, dumpOutput.Height ), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
