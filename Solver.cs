@@ -143,7 +143,7 @@ namespace SyncomaniaSolver
         public TileType type;
         public int distanceToExit = int.MaxValue;
         public Pos position;
-        public MapTile[] neighbours = new MapTile[4];
+        public readonly MapTile[] neighbours = new MapTile[4];
         public int[] Index { get; private set; }
     }
 
@@ -168,6 +168,8 @@ namespace SyncomaniaSolver
         public MapTile pos2;
         public MapTile pos3;
         public MapTile pos4;
+        public MapTile[] ContrActors { get; private set; }
+        public MapTile[] Boxes { get; private set; }
 
         public Direction moveDir;
 
@@ -197,10 +199,10 @@ namespace SyncomaniaSolver
             return string.Format( "move:  {0}", moveDir.ToString() );
         }
 
-        public bool Equals( GameState other )
-        {
-            return pos1.Equals( other.pos1 ) && pos2.Equals( other.pos2 ) && pos3.Equals( other.pos3 ) && pos4.Equals( other.pos4 );
-        }
+        //public bool Equals( GameState other )
+        //{
+        //    return pos1.Equals( other.pos1 ) && pos2.Equals( other.pos2 ) && pos3.Equals( other.pos3 ) && pos4.Equals( other.pos4 );
+        //}
 
         public int CompareTo( GameState other )
         {
@@ -317,7 +319,7 @@ namespace SyncomaniaSolver
         public eMapSymmetry Symmetry { get; private set; }
 
         public readonly MapTile[] actors = { null, null, null, null };
-        public readonly MapTile[] antiActors = { null, null, null, null };
+        private readonly List<MapTile> contrActors = new List<MapTile>();
 
         public MapTile ExitTile { get; private set; }
 
@@ -348,7 +350,6 @@ namespace SyncomaniaSolver
             ExitTile = null;
 
             int actorsCount = 0;
-            int antiActorsCount = 0;
 
             int x = 0, y = 0;
             int index = 0;
@@ -384,7 +385,7 @@ namespace SyncomaniaSolver
                 if ( objectType == MovingObject.ObjectType.Actor )
                     actors[actorsCount++] = tile;
                 else if ( objectType == MovingObject.ObjectType.AntiActor )
-                    antiActors[antiActorsCount++] = tile;
+                    contrActors.Add(tile);
             }
 
             if ( index != width * height ) {
@@ -454,66 +455,47 @@ namespace SyncomaniaSolver
         /// <summary>
         /// false means not a valid new pos (getting into trap)
         /// </summary>
-        public bool GetNewPos( MapTile pos, Direction dir, out MapTile result )
+        public bool GetNewPos( MapTile curPos, Direction? dir, out MapTile result )
         {
-            bool bCheckPusher = true;
-            while ( true )
-            {
-                var neightbourTile = pos.neighbours[(int)dir];
-                if ( neightbourTile == null )
+            if ( dir.HasValue == false )
+                switch ( curPos.type )
                 {
-                    result = pos;
-                    return true;
+                    case MapTile.TileType.PusherDown:
+                        dir = Direction.Down;
+                        break;
+                    case MapTile.TileType.PusherLeft:
+                        dir = Direction.Left;
+                        break;
+                    case MapTile.TileType.PusherRight:
+                        dir = Direction.Right;
+                        break;
+                    case MapTile.TileType.PusherUp:
+                        dir = Direction.Up;
+                        break;
+                    default: // Stay at the same position
+                        result = curPos;
+                        return true;
                 }
-
-                var tiletype = neightbourTile.type;
-                if ( tiletype == MapTile.TileType.Trap )
-                {
+            var newPos = curPos.neighbours[(int)dir];
+            if ( newPos == null )
+            {
+                result = curPos;
+                return true;
+            }
+            switch ( newPos.type )
+            {
+                case MapTile.TileType.Block:
+                    result = curPos;
+                    return true;
+                case MapTile.TileType.Trap:
                     result = null;
                     return false;
-                }
-                else if ( tiletype == MapTile.TileType.Exit )
-                {
+                case MapTile.TileType.Exit:
                     result = null;
                     return true;
-                }
-                else if ( tiletype == MapTile.TileType.Block )
-                {
-                    result = pos;
+                default:
+                    result = newPos;
                     return true;
-                }
-                else if ( tiletype == MapTile.TileType.Empty )
-                {
-                    result = neightbourTile;
-                    return true;
-                }
-                else if ( tiletype >= MapTile.TileType.PusherUp && tiletype <= MapTile.TileType.PusherRight )
-                {
-                    pos = neightbourTile;
-
-                    if ( !bCheckPusher )
-                    {
-                        result = pos;
-                        return true;
-                    }
-
-                    if ( tiletype == MapTile.TileType.PusherDown )
-                        dir = Direction.Down;
-                    else if ( tiletype == MapTile.TileType.PusherUp )
-                        dir = Direction.Up;
-                    else if ( tiletype == MapTile.TileType.PusherLeft )
-                        dir = Direction.Left;
-                    else if ( tiletype == MapTile.TileType.PusherRight )
-                        dir = Direction.Right;
-
-                    bCheckPusher = false;
-
-                    continue;
-                }
-                else
-                {
-                    throw new Exception( "Unknown tile type" );
-                }
             }
         }
 
@@ -524,6 +506,7 @@ namespace SyncomaniaSolver
             MapTile pos3 = null;
             MapTile pos4 = null;
 
+            // Step 1: Just Actors are moving. All movement is simultaneous.
             if ( currentState.pos1 != null )
             {
                 if ( GetNewPos( currentState.pos1, dir, out pos1 ) == false )
@@ -545,6 +528,35 @@ namespace SyncomaniaSolver
                     return null;
             }
 
+            // Check Actors colliding. Check for collision with ContrActors too!
+            if ( pos1 != null && ( pos1 == pos2 || pos1 == pos3 || pos1 == pos4 ) ||
+                 pos2 != null && ( pos2 == pos3 || pos2 == pos4) ||
+                 pos3 != null && pos3 == pos4 )
+                return null;
+
+            // Step 2: Actors pushed by pushers, ContrActors and Boxes are moving. All movement is simultaneous.
+            if ( pos1 != null )
+            {
+                if ( GetNewPos( pos1, null, out pos1 ) == false )
+                    return null;
+            }
+            if ( pos2 != null )
+            {
+                if ( GetNewPos( pos2, null, out pos2 ) == false )
+                    return null;
+            }
+            if ( pos3 != null )
+            {
+                if ( GetNewPos( pos3, null, out pos3 ) == false )
+                    return null;
+            }
+            if ( pos4 != null )
+            {
+                if ( GetNewPos( pos4, null, out pos4 ) == false )
+                    return null;
+            }
+
+            // Check Actors colliding. Check for collision with ContrActors too!
             if ( pos1 != null && ( pos1 == pos2 || pos1 == pos3 || pos1 == pos4 ) ||
                  pos2 != null && ( pos2 == pos3 || pos2 == pos4) ||
                  pos3 != null && pos3 == pos4 )
