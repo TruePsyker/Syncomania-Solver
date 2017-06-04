@@ -189,7 +189,6 @@ namespace SyncomaniaSolver
                 var symBiases = biases[symbol.maskIdx];
 
                 // TODO: Go through all 'tiles' instead
-                //for ( int frameY = 0; frameY < sizeY; frameY++ )
                 Parallel.For( 0, sizeY, frameY =>
                 {
                     var tilePos = ( frameY * LevelExtents / sizeY ) * LevelExtents;
@@ -221,7 +220,8 @@ namespace SyncomaniaSolver
 #endif
                     }
                 } );
-            } //);
+            }
+            sw.Stop();
             Console.WriteLine( String.Format( "Elapsed time: {0} ms", sw.ElapsedMilliseconds ) );
 #if DUMP_RESULT
             var dumpOutput = new Bitmap( dataSizeX - frameSize, sizeY * symbols.Length, System.Drawing.Imaging.PixelFormat.Format32bppRgb );

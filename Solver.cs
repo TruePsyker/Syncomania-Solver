@@ -132,9 +132,13 @@ namespace SyncomaniaSolver
             PusherRight,
         }
 
-        public static char[] EncodedTiles = { '.', 'b', 'e', 't', 'u', 'd', 'l', 'r' };
-
-        public MapTile( TileType type, int x, int y, int[] index )
+        public MapTile( TileType type, int x, int y,
+#if SYMMETRY_FOR_STATE_HASH_CHECK
+            int[] index 
+#else
+            int index
+#endif
+            )
         {
             this.type = type;
             position = new Pos{ x = x, y = y };
@@ -144,7 +148,11 @@ namespace SyncomaniaSolver
         public int distanceToExit = int.MaxValue;
         public Pos position;
         public readonly MapTile[] neighbours = new MapTile[4];
+#if SYMMETRY_FOR_STATE_HASH_CHECK
         public int[] Index { get; private set; }
+#else
+        public int Index { get; private set; }
+#endif
     }
 
     public class MovingObject
@@ -159,6 +167,54 @@ namespace SyncomaniaSolver
 
         public ObjectType type;
         public MapTile position;
+    }
+
+    public struct StateHash
+    {
+        public long a;
+        public long b;
+        public long c;
+        public long d;
+        // Note that Int64.GetHashCode() is just xor of lower 32bits and upper 32bits
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                const int s = 23;
+                int hash = unchecked((int)(a));
+                hash = hash * s + (int)(a >> 32);
+                hash = hash * s + unchecked((int)(b));
+                hash = hash * s + (int)(b >> 32);
+                hash = hash * s + unchecked((int)(c));
+                hash = hash * s + (int)(c >> 32);
+                hash = hash * s + unchecked((int)(d));
+                hash = hash * s + (int)(d >> 32);
+                return hash;
+            }
+
+        }
+
+        public void Add( int idx, int val)
+        {
+            int rem;
+            int div = Math.DivRem( idx, 32, out rem );
+            rem <<= 1;
+            switch ( div )
+            {
+                case 0:
+                    a |= (long)val << rem;
+                    break;
+                case 1:
+                    b |= (long)val << rem;
+                    break;
+                case 2:
+                    c |= (long)val << rem;
+                    break;
+                case 3:
+                    d |= (long)val << rem;
+                    break;
+            }
+        }
     }
 
     public class GameState : IComparable<GameState>
@@ -176,17 +232,18 @@ namespace SyncomaniaSolver
         public float weight;
         public int turn;
 
-        public int Hash { get; private set; }
+        public StateHash Hash { get; private set; }
 
-        public GameState( GameState prevState, MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4, Direction moveDir, int _hash )
+        public GameState( GameState prevState, MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4, MapTile[] contrActors, Direction moveDir, StateHash hash )
         {
             this.PrevState = prevState;
             this.pos1 = pos1;
             this.pos2 = pos2;
             this.pos3 = pos3;
             this.pos4 = pos4;
+            this.ContrActors = contrActors;
             this.moveDir = moveDir;
-            Hash = _hash;
+            this.Hash = hash;
 
             if ( prevState != null )
                 turn = prevState.turn + 1;
@@ -369,7 +426,12 @@ namespace SyncomaniaSolver
                     return false;
                 }
 
+#if SYMMETRY_FOR_STATE_HASH_CHECK
                 var tile = new MapTile( tileType, x, y, GetIndexBySymmetry( index, x, y ) );
+#else
+                var tile = new MapTile( tileType, x, y, index );
+#endif
+
                 tiles[x, y] = tile;
 
                 if ( tileType == MapTile.TileType.Exit )
@@ -453,7 +515,7 @@ namespace SyncomaniaSolver
         }
 
         /// <summary>
-        /// false means not a valid new pos (getting into trap)
+        /// False means not a valid new position for an Actor. Other game objects just ignore result value.
         /// </summary>
         public bool GetNewPos( MapTile curPos, Direction? dir, out MapTile result )
         {
@@ -499,91 +561,134 @@ namespace SyncomaniaSolver
             }
         }
 
-        public GameState GetNewState( GameState currentState, Direction dir, Func<int,bool> checkHash )
+        /// <summary>
+        /// Most game logic is implemented in this method.
+        /// </summary>
+        public GameState GetNewState( GameState currentState, Direction dir, Func<StateHash,bool> checkHash )
         {
             MapTile pos1 = null;
             MapTile pos2 = null;
             MapTile pos3 = null;
             MapTile pos4 = null;
+            MapTile[] contractorNewPos = new MapTile[currentState.ContrActors.Length];
+            currentState.ContrActors.CopyTo( contractorNewPos, 0 );
 
-            // Step 1: Just Actors are moving. All movement is simultaneous.
-            if ( currentState.pos1 != null )
-            {
-                if ( GetNewPos( currentState.pos1, dir, out pos1 ) == false )
-                    return null;
-            }
-            if ( currentState.pos2 != null )
-            {
-                if ( GetNewPos( currentState.pos2, dir, out pos2 ) == false )
-                    return null;
-            }
-            if ( currentState.pos3 != null )
-            {
-                if ( GetNewPos( currentState.pos3, dir, out pos3 ) == false )
-                    return null;
-            }
-            if ( currentState.pos4 != null )
-            {
-                if ( GetNewPos( currentState.pos4, dir, out pos4 ) == false )
-                    return null;
-            }
+            // TODO: Boxes pushed by Actors and Contractors?
 
-            // Check Actors colliding. Check for collision with ContrActors too!
+            // Step 1: Just Actors are moving. All movements are simultaneous.
+            if ( currentState.pos1 != null && GetNewPos( currentState.pos1, dir, out pos1 ) == false )
+                return null;
+            if ( currentState.pos2 != null && GetNewPos( currentState.pos2, dir, out pos2 ) == false )
+                return null;
+            if ( currentState.pos3 != null && GetNewPos( currentState.pos3, dir, out pos3 ) == false )
+                return null;
+            if ( currentState.pos4 != null && GetNewPos( currentState.pos4, dir, out pos4 ) == false )
+                return null;
+
+            // Check Actors colliding themselves.
             if ( pos1 != null && ( pos1 == pos2 || pos1 == pos3 || pos1 == pos4 ) ||
                  pos2 != null && ( pos2 == pos3 || pos2 == pos4) ||
                  pos3 != null && pos3 == pos4 )
                 return null;
 
-            // Step 2: Actors pushed by pushers, ContrActors and Boxes are moving. All movement is simultaneous.
-            if ( pos1 != null )
+            // Step 2: ContrActors are moving. All movements are simultaneous. Check for collision with Actors the same time.
+            // Consider removing Contractors from the list instead of nullifying them
+            for ( int idx = 0; idx < contractorNewPos.Length; idx++ )
             {
-                if ( GetNewPos( pos1, null, out pos1 ) == false )
-                    return null;
-            }
-            if ( pos2 != null )
-            {
-                if ( GetNewPos( pos2, null, out pos2 ) == false )
-                    return null;
-            }
-            if ( pos3 != null )
-            {
-                if ( GetNewPos( pos3, null, out pos3 ) == false )
-                    return null;
-            }
-            if ( pos4 != null )
-            {
-                if ( GetNewPos( pos4, null, out pos4 ) == false )
-                    return null;
+                MapTile pos = contractorNewPos[idx];
+                if ( contractorNewPos[idx] != null )
+                {
+                    // Check for collision with Actors before movement
+                    if ( pos1 != null && pos1 == pos || pos2 != null && pos2 == pos || pos3 != null && pos3 == pos || pos4 != null && pos4 == pos )
+                        return null;
+
+                    GetNewPos( pos, (Direction)((int)dir ^ 2), out pos );
+
+                    if ( pos != null )
+                    {
+                        // Check for collision with Actors after movement
+                        if ( pos1 != null && pos1 == pos || pos2 != null && pos2 == pos || pos3 != null && pos3 == pos || pos4 != null && pos4 == pos )
+                            return null;
+
+                        // Check for collision with other Contractors, remove collided
+                        for ( int idxInner = 0; idxInner < idx; idxInner++ )
+                            if ( contractorNewPos[idxInner] == pos )
+                            {
+                                pos = null;
+                                break;
+                            }
+                    }
+                    contractorNewPos[idx] = pos;
+                }
             }
 
-            // Check Actors colliding. Check for collision with ContrActors too!
+            // Step 3: Actors are pushed by pushers. All movements are simultaneous.
+            if ( pos1 != null && GetNewPos( pos1, null, out pos1 ) == false )
+                return null;
+            if ( pos2 != null && GetNewPos( pos2, null, out pos2 ) == false )
+                return null;
+            if ( pos3 != null && GetNewPos( pos3, null, out pos3 ) == false )
+                return null;
+            if ( pos4 != null && GetNewPos( pos4, null, out pos4 ) == false )
+                return null;
+
+            // Check Actors colliding themselves.
             if ( pos1 != null && ( pos1 == pos2 || pos1 == pos3 || pos1 == pos4 ) ||
                  pos2 != null && ( pos2 == pos3 || pos2 == pos4) ||
                  pos3 != null && pos3 == pos4 )
                 return null;
 
-            var hash = CalculateStateHash( pos1, pos2, pos3, pos4, eMapSymmetry.None );
+            // Step 3: Contractors and Boxes are pushed by pushers. All movements are simultaneous.
+            for ( int idx = 0; idx < contractorNewPos.Length; idx++ )
+            {
+                MapTile pos = contractorNewPos[idx];
+                if ( pos != null )
+                {
+                    GetNewPos( pos, null, out pos );
+
+                    if ( pos != null )
+                    {
+                        // Check for collision with Actors after movement
+                        if ( pos1 != null && pos1 == pos || pos2 != null && pos2 == pos || pos3 != null && pos3 == pos || pos4 != null && pos4 == pos )
+                            return null;
+
+                        // Check for collision with other Contractors, remove collided
+                        for ( int idxInner = 0; idxInner < idx; idxInner++ )
+                            if ( contractorNewPos[idxInner] == pos )
+                            {
+                                pos = null;
+                                break;
+                            }
+                    }
+                    contractorNewPos[idx] = pos;
+                }
+            }
+
+            // Check if we already have same state
+            var hash = CalculateStateHash( pos1, pos2, pos3, pos4, contractorNewPos, eMapSymmetry.None );
             if ( checkHash != null && checkHash( hash ) == false )
                 return null;
 
-            //for ( eMapSymmetry s = eMapSymmetry.Horizontal; s <= eMapSymmetry.Both; s++ )
-            //{
-            //    if ( ( Symmetry & s ) == s )
-            //    {
-            //        var hashOther = CalculateStateHash( pos1, pos2, pos3, pos4, s );
-            //        if ( checkHash( hashOther ) == false )
-            //            return null;
-            //    }
-            //}
-
-            return new GameState( currentState, pos1, pos2, pos3, pos4, dir, hash );
+#if SYMMETRY_FOR_STATE_HASH_CHECK
+            for ( eMapSymmetry s = eMapSymmetry.Horizontal; s <= eMapSymmetry.Both; s++ )
+            {
+                if ( ( Symmetry & s ) == s )
+                {
+                    var hashOther = CalculateStateHash( pos1, pos2, pos3, pos4, s );
+                    if ( checkHash( hashOther ) == false )
+                        return null;
+                }
+            }
+#endif
+            return new GameState( currentState, pos1, pos2, pos3, pos4, contractorNewPos, dir, hash );
         }
 
         public GameState GetStartingState()
         {
-            var hash = CalculateStateHash( actors[0], actors[1], actors[2], actors[3], eMapSymmetry.None );
+            var ca = contrActors.ToArray();
+            var hash = CalculateStateHash( actors[0], actors[1], actors[2], actors[3], ca, eMapSymmetry.None );
 
-            return new GameState( null, actors[0], actors[1], actors[2], actors[3], Direction.Left, hash );
+            return new GameState( null, actors[0], actors[1], actors[2], actors[3], ca, Direction.Left, hash );
         }
 
         private void SetupTileNeighbourhood()
@@ -694,7 +799,7 @@ namespace SyncomaniaSolver
             if ( beginState.IsFinished() )
                 return beginState;
 
-            HashSet<int> allUniqueStates = new HashSet<int>();
+            HashSet<StateHash> allUniqueStates = new HashSet<StateHash>();
             allUniqueStates.Add( beginState.Hash );
 
             Queue<GameState> frontStates = new Queue<GameState>(32000);
@@ -707,7 +812,7 @@ namespace SyncomaniaSolver
 
             GameState currentState = null;
 
-            Func<int, bool> checkHash = (hash) =>
+            Func<StateHash, bool> checkHash = (hash) =>
             {
                 return allUniqueStates.Contains( hash ) == false;
             };
@@ -771,7 +876,7 @@ namespace SyncomaniaSolver
             if ( beginState.IsFinished() )
                 return beginState;
 
-            HashSet<int> allUniqueStates = new HashSet<int>();
+            HashSet<StateHash> allUniqueStates = new HashSet<StateHash>();
             allUniqueStates.Add( beginState.Hash );
 
             PriorityQueue<GameState> frontStates = new PriorityQueue<GameState>( 32000 );
@@ -786,7 +891,7 @@ namespace SyncomaniaSolver
 
             PriorityQueue<SolutionState> solutions = new PriorityQueue<SolutionState>(100);
 
-            Func<int, bool> checkHash = (hash) =>
+            Func<StateHash, bool> checkHash = (hash) =>
             {
                 return allUniqueStates.Contains( hash ) == false;
             };
@@ -846,46 +951,44 @@ namespace SyncomaniaSolver
 
         }
 
-        private int CalculateStateHash( MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4, eMapSymmetry symmetry )
+        private StateHash CalculateStateHash( MapTile pos1, MapTile pos2, MapTile pos3, MapTile pos4, MapTile[] positions, eMapSymmetry symmetry )
         {
-            byte hl0 = (byte)( pos1 != null ? pos1.Index[(int)symmetry] : 0 );
-            byte hl1 = (byte)( pos2 != null ? pos2.Index[(int)symmetry] : 0 );
-            byte hl2 = (byte)( pos3 != null ? pos3.Index[(int)symmetry] : 0 );
-            byte hl3 = (byte)( pos4 != null ? pos4.Index[(int)symmetry] : 0 );
+            StateHash sh;
+            sh.a = 0; sh.b = 0; sh.c = 0; sh.d = 0;
 
-            byte tmp;
-            if ( hl1 < hl0 ) {
-                tmp = hl0;
-                hl0 = hl1;
-                hl1 = tmp;
-            }
-            if ( hl3 < hl2 ) {
-                tmp = hl2;
-                hl2 = hl3;
-                hl3 = tmp;
-            }
-            if ( hl3 < hl0 ) {
-                tmp = hl0;
-                hl0 = hl3;
-                hl3 = tmp;
-            }
-            if ( hl2 < hl1 ) {
-                tmp = hl2;
-                hl2 = hl1;
-                hl1 = tmp;
-            }
-            if ( hl1 < hl0 ) {
-                tmp = hl0;
-                hl0 = hl1;
-                hl1 = tmp;
-            }
-            if ( hl3 < hl2 ) {
-                tmp = hl2;
-                hl2 = hl3;
-                hl3 = tmp;
-            }
+#if SYMMETRY_FOR_STATE_HASH_CHECK
+            if ( pos1 != null )
+                sh.Add( pos1.Index[(int)symmetry], 1 );
+            if ( pos2 != null )
+                sh.Add( pos2.Index[(int)symmetry], 1 );
+            if ( pos3 != null )
+                sh.Add( pos3.Index[(int)symmetry], 1 );
+            if ( pos4 != null )
+                sh.Add( pos4.Index[(int)symmetry], 1 );
 
-            return hl0 | ( hl1 << 8 ) | ( hl2 << 16 ) | ( hl3 << 24 );
+            for ( int idx = 0; idx < positions.Length; idx++ )
+            {
+                if ( positions[idx] != null )
+                    sh.Add( positions[idx].Index[(int)symmetry], 2 );
+            }
+#else
+            if ( pos1 != null )
+                sh.Add( pos1.Index, 1 );
+            if ( pos2 != null )
+                sh.Add( pos2.Index, 1 );
+            if ( pos3 != null )
+                sh.Add( pos3.Index, 1 );
+            if ( pos4 != null )
+                sh.Add( pos4.Index, 1 );
+
+            for ( int idx = 0; idx < positions.Length; idx++ )
+            {
+                if ( positions[idx] != null )
+                    sh.Add( positions[idx].Index, 2 );
+            }
+#endif
+
+            return sh;
         }
     }
 
