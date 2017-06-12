@@ -89,8 +89,9 @@ namespace SyncomaniaSolver
         public const int LevelExtents = 11;
         public const int LevelExtents2 = LevelExtents * LevelExtents;
 
-        const int dataSizeX = 400;
-        const int dataSizeY = 400;
+        const int inputSize = 400;
+        const int borderWidth = 10;
+        const int areaSize = 10;
 
         const float WeightThreshold = 0.72f;
 
@@ -111,41 +112,126 @@ namespace SyncomaniaSolver
                                                    new Symbol { tileType = MapTile.TileType.PusherRight, colorIdx = EColorIndex.White, maskIdx = 4 }, // Pusher right
                                                    new Symbol { tileType = MapTile.TileType.PusherDown, colorIdx = EColorIndex.White, maskIdx = 5 },}; // Pusher down
 
+        public bool Success { get; private set; }
+
+        public string Output { get; private set; }
+
         public LevelRecognitor( string fileName )
+        {
+            var inputData = GetInputDataFromImage( fileName );
+
+            float[][,] masks;
+            float[] biases;
+            int frameSize;
+
+            GetConvolutionFilters( out frameSize, out masks, out biases );
+
+            var dataSize = inputSize - borderWidth * 2;
+
+#if DUMP_RESULT
+            var result = new float[symbols.Length][,];
+            for ( int i = 0; i < result.Length; i++ )
+                result[i] = new float[areaSize * LevelExtents, areaSize * LevelExtents];
+#endif
+            ILevelEncoder encoder = new DefaultLevelEncoder();
+
+            var defValue = encoder.EncodeTile( MapTile.TileType.Empty, MovingObject.ObjectType.None );
+            StringBuilder output = new StringBuilder(LevelExtents2);
+            output.Length = LevelExtents2;
+            for ( int i = 0; i < LevelExtents2; i++ )
+                output[i] = defValue;
+
+            var sw = Stopwatch.StartNew();
+            Parallel.For( 0, LevelExtents2, tileIdx =>
+            {
+                for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
+                {
+                    var symbol = symbols[symbolIdx];
+                    var symWeights = masks[symbol.maskIdx];
+#if DUMP_RESULT
+                    var symResults = result[symbolIdx];
+#endif
+                    var symInput = inputData[(int)symbol.colorIdx];
+                    var symBiases = biases[symbol.maskIdx];
+
+                    var tileY = tileIdx / LevelExtents;
+                    var tileX = tileIdx % LevelExtents;
+                    var startY = borderWidth + tileY * dataSize / LevelExtents - areaSize / 2;
+
+                    for ( int areaY = 0; areaY < areaSize; areaY++ )
+                    {
+                        var startX = borderWidth + tileX * dataSize / LevelExtents - areaSize / 2;
+                        var endX = startX + areaSize;
+                        var frameY = startY + areaY;
+                        for ( int areaX = 0; areaX < areaSize; areaX++ )
+                        {
+                            float weight = 0.0f;
+                            var frameX = startX + areaX;
+
+                            for ( int y = 0; y < frameSize; y++ ) // Matmul (input,masks)
+                                for ( int x = 0; x < frameSize; x++ )
+                                    weight += symWeights[y, x] * symInput[y + frameY, x + frameX];
+#if DUMP_RESULT
+                            symResults[tileY * areaSize + areaY, tileX * areaSize + areaX] = weight;
+#endif
+                            if ( weight / symBiases > WeightThreshold )
+                            {
+                                output[tileIdx] = encoder.EncodeTile( symbol.tileType, symbol.objectType );
+                                return;
+                            }
+                        }
+                    }
+                }
+            } );
+            sw.Stop();
+            Console.WriteLine( String.Format( "Elapsed time: {0} ms", sw.ElapsedMilliseconds ) );
+
+#if DUMP_RESULT
+            DumpConvolutionProduct( result, biases );
+#endif
+            Success = true;
+            Output = output.ToString();
+        }
+
+        private float[][,] GetInputDataFromImage( string fileName )
         {
             var bmp = new Bitmap( fileName );
             if ( bmp == null )
-                return;
+                return null;
 
-            var dest = new Bitmap( dataSizeX, dataSizeY );
+            var dest = new Bitmap( inputSize, inputSize );
             Graphics g = Graphics.FromImage( dest );
 
             g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
             g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
-            g.DrawImage( bmp, new Rectangle( 0, 0, dataSizeX, dataSizeY ), 0, 0, bmp.Width, bmp.Width, GraphicsUnit.Pixel );
+            g.DrawImage( bmp, new Rectangle( 0, 0, inputSize, inputSize ), 0, 0, bmp.Width, bmp.Width, GraphicsUnit.Pixel );
 
             float[][,] inputData = new float[Colors.Length][,];
             for ( int i = 0; i < inputData.Length; i++ )
-                inputData[i] = new float[dataSizeY, dataSizeX];
+                inputData[i] = new float[inputSize, inputSize];
 
-            for ( int y = 0; y < dataSizeY; y++ )
+            for ( int y = 0; y < inputSize; y++ )
             {
-                for ( int x = 0; x < dataSizeX; x++ )
+                for ( int x = 0; x < inputSize; x++ )
                 {
                     var normInput = NormalizeInput( dest.GetPixel( x, y ) ); ;
                     for ( int i = 0; i < inputData.Length; i++ )
                         inputData[i][y,x] = Colors[i].Affinity( normInput );
                 }
             }
+            return inputData;
+        }
 
+        private void GetConvolutionFilters( out int frameSize, out float[][,] masks, out float[] biases )
+        {
             // TODO: Store ready-for-use float data in project
             System.Reflection.Assembly myAssembly = System.Reflection.Assembly.GetExecutingAssembly();
             var masksBmp = new Bitmap( myAssembly.GetManifestResourceStream( "LevelRecognitor.masks_34.png" ) );
-            var frameSize = masksBmp.Width;
-            var masks = new float[masksBmp.Height / frameSize][,];
-            var biases = new float[masks.Length];
+            frameSize = masksBmp.Width;
+            masks = new float[masksBmp.Height / frameSize][,];
+            biases = new float[masks.Length];
             for ( int idx = 0; idx < masks.Length; idx++ )
             {
                 masks[idx] = new float[frameSize, frameSize];
@@ -160,79 +246,27 @@ namespace SyncomaniaSolver
                     }
                 }
             }
+        }
 
-            var sizeX = dataSizeX - frameSize;
-            var sizeY = dataSizeY - frameSize;
+        private Vector3 NormalizeInput( Color input )
+        {
+            return new Vector3 { x = Math.Max( input.R - 106, 0.0f ) / 149.0f,
+                                 y = Math.Max( input.G - 106, 0.0f ) / 149.0f,
+                                 z = Math.Max( input.B - 106, 0.0f ) / 149.0f };
+        }
 
-#if DUMP_RESULT
-            var result = new float[symbols.Length][,];
-            for ( int i = 0; i < result.Length; i++ )
-                result[i] = new float[sizeY, sizeX];
-#endif
-            ILevelEncoder encoder = new DefaultLevelEncoder();
-
-            var defValue = encoder.EncodeTile( MapTile.TileType.Empty, MovingObject.ObjectType.None );
-            StringBuilder output = new StringBuilder(LevelExtents2);
-            output.Length = LevelExtents2;
-            for ( int i = 0; i < LevelExtents2; i++ )
-                output[i] = defValue;
-
-            var sw = Stopwatch.StartNew();
-            for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
-            {
-                var symbol = symbols[symbolIdx];
-                var symWeights = masks[symbol.maskIdx];
-#if DUMP_RESULT
-                var symResults = result[symbolIdx];
-#endif
-                var symInput = inputData[(int)symbol.colorIdx];
-                var symBiases = biases[symbol.maskIdx];
-
-                // TODO: Go through all 'tiles' instead
-                Parallel.For( 0, sizeY, frameY =>
-                {
-                    var tilePos = ( frameY * LevelExtents / sizeY ) * LevelExtents;
-                    for ( int frameX = 0; frameX < sizeX; frameX++ )
-                    {
-                        var tileX = frameX * LevelExtents / sizeX;
-                        if ( output[tilePos + tileX] != defValue )
-                        {
-                            frameX = ( tileX + 1 ) * sizeX / LevelExtents;
-                            continue;
-                        }
-
-                        float weight = 0.0f;
-
-                        for ( int y = 0; y < frameSize; y++ ) // Matmul (input,masks)
-                        {
-                            for ( int x = 0; x < frameSize; x++ )
-                            {
-                                weight += symWeights[y, x] * symInput[y + frameY, x + frameX];
-                            }
-                        }
-                        if ( weight / symBiases > WeightThreshold )
-                        {
-                            output[tilePos + tileX] = encoder.EncodeTile( symbol.tileType, symbol.objectType );
-                            frameX = ( tileX + 1 ) * sizeX / LevelExtents;
-                        }
-#if DUMP_RESULT
-                        symResults[frameY, frameX] = weight;
-#endif
-                    }
-                } );
-            }
-            sw.Stop();
-            Console.WriteLine( String.Format( "Elapsed time: {0} ms", sw.ElapsedMilliseconds ) );
-#if DUMP_RESULT
-            var dumpOutput = new Bitmap( dataSizeX - frameSize, sizeY * symbols.Length, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
+        private void DumpConvolutionProduct( float[][,] result, float[] biases )
+        {
+            var size = result[0].GetUpperBound( 0 );
+            var dumpOutput = new Bitmap( size, size * symbols.Length, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
             var hbmp = dumpOutput.LockBits( new Rectangle( 0, 0, dumpOutput.Width, dumpOutput.Height ), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppRgb );
-            var perMaskOffset = sizeX * sizeY;
+            var perMaskOffset = size * size;
             for ( int symbolIdx = 0; symbolIdx < symbols.Length; symbolIdx++ )
             {
                 var symBiases = biases[symbols[symbolIdx].maskIdx];
-                for ( int frameY = 0, baseOffsetY = symbolIdx * perMaskOffset * 4; frameY < sizeY; frameY++, baseOffsetY += sizeX * 4 )
+                for ( int frameY = 0, baseOffsetY = symbolIdx * perMaskOffset * 4; frameY < size; frameY++, baseOffsetY += size * 4 )
                 {
-                    for ( int frameX = 0, baseOffset = baseOffsetY; frameX < sizeX; frameX++, baseOffset+=4 )
+                    for ( int frameX = 0, baseOffset = baseOffsetY; frameX < size; frameX++, baseOffset+=4 )
                     {
                         var weight = result[symbolIdx][frameY, frameX];
                         weight /= symBiases;
@@ -247,20 +281,6 @@ namespace SyncomaniaSolver
 
             dumpOutput.UnlockBits( hbmp );
             dumpOutput.Save( "result.png", System.Drawing.Imaging.ImageFormat.Png );
-#endif
-            Success = true;
-            Output = output.ToString();
         }
-
-        private Vector3 NormalizeInput( Color input )
-        {
-            return new Vector3 { x = Math.Max( input.R - 106, 0.0f ) / 149.0f,
-                                 y = Math.Max( input.G - 106, 0.0f ) / 149.0f,
-                                 z = Math.Max( input.B - 106, 0.0f ) / 149.0f };
-        }
-
-        public bool Success { get; private set; }
-
-        public string Output { get; private set; }
     }
 }

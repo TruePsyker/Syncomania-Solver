@@ -144,6 +144,7 @@ namespace SyncomaniaSolver
             position = new Pos{ x = x, y = y };
             Index = index;
         }
+
         public TileType type;
         public int distanceToExit = int.MaxValue;
         public Pos position;
@@ -298,7 +299,7 @@ namespace SyncomaniaSolver
 
             weight += dist;
 
-            weight += 1.58f * turn;
+            weight += GameMap.TurnCost * turn;
         }
 
         public IEnumerable<GameState> History
@@ -325,10 +326,18 @@ namespace SyncomaniaSolver
         public GameState State { get; private set; }
 
         public int Turns { get { return State.turn; } }
+        public int ElapsedTime { get; private set; }
+        public int IterationsCount { get; private set; }
+        public int MaxFrontStatesCount { get; private set; }
+        public int UniqueStatesCount { get; private set; }
 
-        public SolutionState( GameState state )
+        public SolutionState( GameState state, int elapsedTime, int iterationsCount, int maxFrontStatesCount, int uniquesStatesCount )
         {
             State = state;
+            ElapsedTime = elapsedTime;
+            IterationsCount = iterationsCount;
+            MaxFrontStatesCount = maxFrontStatesCount;
+            UniqueStatesCount = uniquesStatesCount;
         }
 
         public int CompareTo( SolutionState other )
@@ -370,6 +379,7 @@ namespace SyncomaniaSolver
         }
 
         public static bool TestIsOn { get; set; }
+        public static float TurnCost = 1.4f;
 
         public int width;
         public int height;
@@ -792,12 +802,12 @@ namespace SyncomaniaSolver
         /// BFS algorithm
         /// </summary>
         /// <param name="map"></param>
-        public GameState Solve_BFS()
+        public SolutionState Solve_BFS()
         {
             var beginState = GetStartingState();
 
             if ( beginState.IsFinished() )
-                return beginState;
+                return new SolutionState( beginState, 0, 0, 0, 0 );
 
             HashSet<StateHash> allUniqueStates = new HashSet<StateHash>();
             allUniqueStates.Add( beginState.Hash );
@@ -860,21 +870,19 @@ namespace SyncomaniaSolver
                 maxFrontStatesCount = Math.Max( maxFrontStatesCount, frontStates.Count() );
             }
 
-            var elapsed = sw.ElapsedMilliseconds;
-            Console.WriteLine( "Iterations: {0}", iterations );
-            Console.WriteLine( "Unique states created: {0}", allUniqueStates.Count );
-            Console.WriteLine( "Max front states count: {0}", maxFrontStatesCount );
-            Console.WriteLine( "Elapsed time: {0} ms", elapsed );
-
-            return currentState;
+            SolutionState solution = new SolutionState( currentState, elapsedTime: (int)(sw.ElapsedMilliseconds),
+                                                                  iterationsCount: iterations,
+                                                              maxFrontStatesCount: maxFrontStatesCount,
+                                                               uniquesStatesCount: allUniqueStates.Count );
+            return solution;
         }
 
-        public GameState Solve_AStar()
+        public SolutionState Solve_AStar()
         {
             var beginState = GetStartingState();
 
             if ( beginState.IsFinished() )
-                return beginState;
+                return new SolutionState( beginState, 0, 0, 0, 0 );
 
             HashSet<StateHash> allUniqueStates = new HashSet<StateHash>();
             allUniqueStates.Add( beginState.Hash );
@@ -889,8 +897,6 @@ namespace SyncomaniaSolver
 
             GameState currentState = null;
 
-            PriorityQueue<SolutionState> solutions = new PriorityQueue<SolutionState>(100);
-
             Func<StateHash, bool> checkHash = (hash) =>
             {
                 return allUniqueStates.Contains( hash ) == false;
@@ -903,8 +909,8 @@ namespace SyncomaniaSolver
                 {
                     if ( newState.IsFinished() )
                     {
-                        solutions.Add( new SolutionState( newState ) );
-                        return solutions.Count == 1;
+                        currentState = newState;
+                        return true;
                     }
 
                     allUniqueStates.Add(newState.Hash);
@@ -922,6 +928,7 @@ namespace SyncomaniaSolver
                 return false;
             };
 
+            sw.Stop();
 
             while ( frontStates.Count > 0 )
             {
@@ -941,13 +948,11 @@ namespace SyncomaniaSolver
                 maxFrontStatesCount = Math.Max( maxFrontStatesCount, frontStates.Count );
             }
 
-            var elapsed = sw.ElapsedMilliseconds;
-            Console.WriteLine( "Iterations: {0}", iterations );
-            Console.WriteLine( "Unique states created: {0}", allUniqueStates.Count );
-            Console.WriteLine( "Max front states count: {0}", maxFrontStatesCount );
-            Console.WriteLine( "Elapsed time: {0} ms", elapsed );
-
-            return solutions.RemoveMin().State;
+            SolutionState solution = new SolutionState( currentState, elapsedTime: (int)(sw.ElapsedMilliseconds),
+                                                                  iterationsCount: iterations,
+                                                              maxFrontStatesCount: maxFrontStatesCount,
+                                                               uniquesStatesCount: allUniqueStates.Count );
+            return solution;
 
         }
 
