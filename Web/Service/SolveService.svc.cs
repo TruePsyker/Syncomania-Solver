@@ -27,8 +27,10 @@ namespace Service
             return null;
         }
 
-        static List<SyncomaniaSolver.Direction> HistoryDumper( SyncomaniaSolver.GameState stateAtFinish )
+        static List<SyncomaniaSolver.Direction> HistoryDumper( SyncomaniaSolver.SolutionState solution )
         {
+            var stateAtFinish = solution.State;
+
             if ( stateAtFinish.IsFinished() )
             {
                 List<SyncomaniaSolver.Direction> moves = new List<SyncomaniaSolver.Direction>();

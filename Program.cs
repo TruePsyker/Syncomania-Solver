@@ -33,32 +33,9 @@ namespace SyncomaniaSolver
             //var state = map.Solve_BFS();
             var state = map.Solve_AStar();
 
-            DumpHistory( state );
+            SolutionDumper.Dump( state );
 
             Console.ReadKey();
-        }
-
-        static void DumpHistory( SolutionState solution )
-        {
-            Console.WriteLine( "Iterations: {0}", solution.IterationsCount );
-            Console.WriteLine( "Unique states created: {0}", solution.UniqueStatesCount );
-            Console.WriteLine( "Max front states count: {0}", solution.MaxFrontStatesCount );
-            Console.WriteLine( "Elapsed time: {0} ms", solution.ElapsedTime );
-
-            var stateAtFinish = solution.State;
-
-            if ( stateAtFinish.IsFinished() )
-            {
-                Console.WriteLine( "Solution turns count: {0}", stateAtFinish.turn );
-                foreach ( var state in stateAtFinish.History )
-                {
-                    Console.WriteLine( state.ToString() );
-                }
-            }
-            else
-            {
-                Console.WriteLine( "No solution found." );
-            }
         }
 
         static string[] test_map = new string[] { "@@#> #",
