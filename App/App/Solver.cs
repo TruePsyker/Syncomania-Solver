@@ -13,109 +13,6 @@ namespace SyncomaniaSolver
         Down
     }
 
-    public interface ILevelEncoder
-    {
-        bool DecodeTile( char input, out MapTile.TileType tileType, out MovingObject.ObjectType objectType );
-        char EncodeTile( MapTile.TileType tileType, MovingObject.ObjectType objectType );
-    }
-
-    public class DefaultLevelEncoder : ILevelEncoder
-    {
-        public static string encodingChars = "abcdefghijklmnopqrstuvwxyzABCDEF"; // 32bits
-
-        public bool DecodeTile( char input, out MapTile.TileType tileType, out MovingObject.ObjectType objectType )
-        {
-            return DecodeTileImpl( input, out tileType, out objectType );
-        }
-        public char EncodeTile( MapTile.TileType tileType, MovingObject.ObjectType objectType )
-        {
-            return EncodeTileImpl( tileType, objectType );
-        }
-
-        public static bool DecodeTileImpl( char input, out MapTile.TileType tileType, out MovingObject.ObjectType objectType )
-        {
-            var idx = encodingChars.IndexOf( input );
-            if ( idx == -1 )
-            {
-                tileType = MapTile.TileType.Empty;
-                objectType = MovingObject.ObjectType.None;
-                return false;
-            }
-            var tt = idx & 0x7;
-            tileType = (MapTile.TileType)tt;
-            tt = ( idx >> 3 ) & 0x3;
-            objectType = (MovingObject.ObjectType)tt;
-            return true;
-        }
-
-        public static char EncodeTileImpl( MapTile.TileType tileType, MovingObject.ObjectType objectType )
-        {
-            char result;
-            result = (char)tileType;
-            result |= (char)( (int)objectType << 3 );
-            return encodingChars[result];
-        }
-    }
-
-    public class TestLevelEncoder : ILevelEncoder
-    {
-        public bool DecodeTile( char input, out MapTile.TileType tileType, out MovingObject.ObjectType objectType )
-        {
-            return DecodeTileImpl( input, out tileType, out objectType );
-        }
-
-        public static bool DecodeTileImpl( char input, out MapTile.TileType tileType, out MovingObject.ObjectType objectType )
-        {
-            tileType = MapTile.TileType.Empty;
-            objectType = MovingObject.ObjectType.None;
-
-            switch ( input )
-            {
-                case ' ':
-                    tileType = MapTile.TileType.Empty;
-                    break;
-                case 'e':
-                    tileType = MapTile.TileType.Exit;
-                    break;
-                case 'x':
-                    tileType = MapTile.TileType.Trap;
-                    break;
-                case '#':
-                    tileType = MapTile.TileType.Block;
-                    break;
-                case '<':
-                    tileType = MapTile.TileType.PusherLeft;
-                    break;
-                case '>':
-                    tileType = MapTile.TileType.PusherRight;
-                    break;
-                case '^':
-                    tileType = MapTile.TileType.PusherUp;
-                    break;
-                case '_':
-                    tileType = MapTile.TileType.PusherDown;
-                    break;
-                case '@':
-                    objectType = MovingObject.ObjectType.Actor;
-                    break;
-                case 'a':
-                    objectType = MovingObject.ObjectType.AntiActor;
-                    break;
-                case 'b':
-                    objectType = MovingObject.ObjectType.Box;
-                    break;
-                default:
-                    return false;
-            }
-            return true;
-        }
-
-        public char EncodeTile( MapTile.TileType tileType, MovingObject.ObjectType objectType )
-        {
-            throw new NotImplementedException();
-        }
-    }
-
     public class MapTile
     {
         public enum TileType
@@ -195,8 +92,9 @@ namespace SyncomaniaSolver
 
         public void Add( int idx, int val)
         {
-            int rem;
-            int div = Math.DivRem( idx, 32, out rem );
+            int rem = idx % 32;
+            //int div = Math.DivRem( idx, 32, out rem );
+            int div = idx / 32;
             rem <<= 1;
             switch ( div )
             {
@@ -395,20 +293,10 @@ namespace SyncomaniaSolver
 
         private MapTile[,] tiles; // x,y indexing
 
-        private ILevelEncoder levelEncoder;
-
-        public GameMap()
+        private bool LoadMapImpl( Tuple<MapTile.TileType,MovingObject.ObjectType>[,] map )
         {
-            if ( TestIsOn )
-                levelEncoder = new TestLevelEncoder();
-            else
-                levelEncoder = new DefaultLevelEncoder();
-        }
-
-        private bool LoadMapImpl( int width, int height, IEnumerable<char> mapEnumerable )
-        {
-            this.width = width;
-            this.height = height;
+            this.width = map.GetLength(1);
+            this.height = map.GetLength(0);
 
             tiles = new MapTile[width, height];
 
@@ -419,20 +307,14 @@ namespace SyncomaniaSolver
             int x = 0, y = 0;
             int index = 0;
 
-            foreach ( var t in mapEnumerable )
+            foreach ( var t in map )
             {
                 x = index % width;
                 y = index / width;
                 index++;
 
-                MapTile.TileType tileType;
-                MovingObject.ObjectType objectType;
-
-                if ( levelEncoder.DecodeTile( t, out tileType, out objectType ) == false )
-                {
-                    Console.WriteLine( "Unknown map tile" );
-                    return false;
-                }
+                MapTile.TileType tileType = t.Item1;
+                MovingObject.ObjectType objectType = t.Item2;
 
 #if SYMMETRY_FOR_STATE_HASH_CHECK
                 var tile = new MapTile( tileType, x, y, GetIndexBySymmetry( index, x, y ) );
@@ -446,7 +328,7 @@ namespace SyncomaniaSolver
                 {
                     if ( ExitTile != null )
                     {
-                        Console.WriteLine( "Map exit already defined" );
+                        //Console.WriteLine( "Map exit already defined" );
                         return false;
                     }
                     ExitTile = tile;
@@ -459,17 +341,17 @@ namespace SyncomaniaSolver
             }
 
             if ( index != width * height ) {
-                Console.WriteLine( "Invalid map data" );
+                //Console.WriteLine( "Invalid map data" );
                 return false;
             }
 
             if ( TestIsOn == false && actorsCount == 0 ) {
-                Console.WriteLine( "No actors on map" );
+                //Console.WriteLine( "No actors on map" );
                 return false;
             }
 
             if ( TestIsOn == false && ExitTile == null ) {
-                Console.WriteLine( "No exit on map" );
+                //Console.WriteLine( "No exit on map" );
                 return false;
             }
 
@@ -494,32 +376,9 @@ namespace SyncomaniaSolver
             return arr;
         }
 
-        public bool LoadMap( string map )
+        public bool LoadMap( Tuple<MapTile.TileType,MovingObject.ObjectType>[,] map )
         {
-            if ( String.IsNullOrEmpty( map ) ) {
-                Console.WriteLine( "Map data is null or empty" );
-                return false;
-            }
-
-            return LoadMapImpl( 11, 11, map );
-        }
-
-        /// <summary>
-        /// Only single exit is supported
-        /// </summary>
-        /// <param name="map"></param>
-        public bool LoadMap( string[] map )
-        {
-            if ( map == null || map.Length == 0 || map[0].Length == 0 ) {
-                Console.WriteLine( "Map data is null or empty" );
-                return false;
-            }
-
-            var q = from row in map
-                     from item in row
-                     select item;
-
-            return LoadMapImpl( map[0].Length, map.Length, q );
+            return LoadMapImpl( map );
         }
 
         /// <summary>
