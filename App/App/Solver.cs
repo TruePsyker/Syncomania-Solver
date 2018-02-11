@@ -27,17 +27,15 @@ namespace SyncomaniaSolver
             PusherRight,
         }
 
-        public MapTile( TileType type, int x, int y,
-#if SYMMETRY_FOR_STATE_HASH_CHECK
-            int[] index 
-#else
-            int index
-#endif
-            )
+        public MapTile( TileType type, int x, int y, int index, GameMap gameMap )
         {
             this.type = type;
             position = new Pos{ x = x, y = y };
+#if SYMMETRY_FOR_STATE_HASH_CHECK
+            Index = gameMap.GetIndexBySymmetry( index, x, y );
+#else
             Index = index;
+#endif
         }
 
         public TileType type;
@@ -49,6 +47,7 @@ namespace SyncomaniaSolver
 #else
         public int Index { get; private set; }
 #endif
+        public MovingObject obj;
     }
 
     public class MovingObject
@@ -90,6 +89,7 @@ namespace SyncomaniaSolver
 
         }
 
+        // TODO: Check correctness of this
         public void Add( int idx, int val)
         {
             int rem = idx % 32;
@@ -316,11 +316,7 @@ namespace SyncomaniaSolver
                 MapTile.TileType tileType = t.Item1;
                 MovingObject.ObjectType objectType = t.Item2;
 
-#if SYMMETRY_FOR_STATE_HASH_CHECK
-                var tile = new MapTile( tileType, x, y, GetIndexBySymmetry( index, x, y ) );
-#else
-                var tile = new MapTile( tileType, x, y, index );
-#endif
+                var tile = new MapTile( tileType, x, y, index, this );
 
                 tiles[x, y] = tile;
 
@@ -334,10 +330,13 @@ namespace SyncomaniaSolver
                     ExitTile = tile;
                 }
 
+                if ( objectType != MovingObject.ObjectType.None )
+                    tile.obj = new MovingObject { type = objectType };
+
                 if ( objectType == MovingObject.ObjectType.Actor )
                     actors[actorsCount++] = tile;
                 else if ( objectType == MovingObject.ObjectType.AntiActor )
-                    contrActors.Add(tile);
+                    contrActors.Add( tile );
             }
 
             if ( index != width * height ) {
@@ -366,7 +365,7 @@ namespace SyncomaniaSolver
             return res;
         }
 
-        private int[] GetIndexBySymmetry( int index, int x, int y )
+        public int[] GetIndexBySymmetry( int index, int x, int y )
         {
             var arr = new int[4];
             arr[0] = index;
@@ -441,6 +440,15 @@ namespace SyncomaniaSolver
             currentState.ContrActors.CopyTo( contractorNewPos, 0 );
 
             // TODO: Boxes pushed by Actors and Contractors?
+
+            if ( actor1.Push( dir ) == false )
+                return null;
+            if ( actor2.Push( dir ) == false )
+                return null;
+            if ( actor3.Push( dir ) == false )
+                return null;
+            if ( actor4.Push( dir ) == false )
+                return null;
 
             // Step 1: Just Actors are moving. All movements are simultaneous.
             if ( currentState.pos1 != null && GetNewPos( currentState.pos1, dir, out pos1 ) == false )
